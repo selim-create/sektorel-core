@@ -83,7 +83,7 @@ class Sektorel_Offers {
                 'offerId' => array( 'type' => 'Int' ),
             ),
             'mutateAndGetPayload' => function( $input ) {
-                $context = Sektorel_Company_Access::require_context( false );
+                $context = Sektorel_Company_Access::require_context( true );
                 $user_id = (int) $context['user_id'];
                 $slug = sanitize_title( $input['leadSlug'] ?? '' );
                 $lead = get_page_by_path( $slug, OBJECT, 'lead' );
@@ -100,10 +100,9 @@ class Sektorel_Offers {
                     throw new \GraphQL\Error\UserError( 'Kendi ilanınıza teklif veremezsiniz.' );
                 }
 
-                $existing = get_posts( array(
+                $existing_args = array(
                     'post_type'      => 'offer',
                     'post_status'    => 'publish',
-                    'author'         => $user_id,
                     'posts_per_page' => 1,
                     'fields'         => 'ids',
                     'meta_query'     => array(
@@ -111,10 +110,22 @@ class Sektorel_Offers {
                         array( 'key' => 'lead_id', 'value' => (int) $lead->ID, 'type' => 'NUMERIC' ),
                         array( 'key' => 'offer_status', 'value' => array( 'pending', 'accepted' ), 'compare' => 'IN' ),
                     ),
-                ) );
+                );
 
+                if ( $context['company_id'] ) {
+                    $existing_args['meta_query'][] = array(
+                        'key'     => '_sektorel_bidder_company_id',
+                        'value'   => (int) $context['company_id'],
+                        'compare' => '=',
+                        'type'    => 'NUMERIC',
+                    );
+                } else {
+                    $existing_args['author'] = $user_id;
+                }
+
+                $existing = get_posts( $existing_args );
                 if ( ! empty( $existing ) ) {
-                    throw new \GraphQL\Error\UserError( 'Bu ilana daha önce teklif verdiniz.' );
+                    throw new \GraphQL\Error\UserError( 'Bu ilana hesabınız veya firmanız üzerinden daha önce teklif verildi.' );
                 }
 
                 $amount = self::sanitize_amount( $input['amount'] ?? '' );
