@@ -22,6 +22,25 @@ class Sektorel_Session_Query {
             ),
         ) );
 
+        register_graphql_object_type( 'SektorelDashboardStats', array(
+            'fields' => array(
+                'leadCount'   => array( 'type' => 'Int' ),
+                'jobCount'    => array( 'type' => 'Int' ),
+                'eventCount'  => array( 'type' => 'Int' ),
+                'viewCount'   => array( 'type' => 'Int' ),
+            ),
+        ) );
+
+        register_graphql_object_type( 'SektorelDashboardItem', array(
+            'fields' => array(
+                'databaseId' => array( 'type' => 'Int' ),
+                'title'      => array( 'type' => 'String' ),
+                'type'       => array( 'type' => 'String' ),
+                'status'     => array( 'type' => 'String' ),
+                'date'       => array( 'type' => 'String' ),
+            ),
+        ) );
+
         register_graphql_object_type( 'SektorelSessionProfile', array(
             'fields' => array(
                 'userId'      => array( 'type' => 'Int' ),
@@ -31,6 +50,8 @@ class Sektorel_Session_Query {
                 'accountType' => array( 'type' => 'String' ),
                 'role'        => array( 'type' => 'String' ),
                 'company'     => array( 'type' => 'SektorelCompanySummary' ),
+                'stats'       => array( 'type' => 'SektorelDashboardStats' ),
+                'recentItems' => array( 'type' => array( 'list_of' => 'SektorelDashboardItem' ) ),
             ),
         ) );
 
@@ -45,17 +66,19 @@ class Sektorel_Session_Query {
                 $user       = get_userdata( $user_id );
                 $company_id = self::get_owned_company_id( $user_id );
                 $company    = null;
+                $view_count = 0;
 
                 if ( $company_id ) {
                     $company_post = get_post( $company_id );
                     if ( $company_post && 'company' === $company_post->post_type ) {
+                        $view_count = (int) get_post_meta( $company_post->ID, 'view_count', true );
                         $company = array(
                             'databaseId' => (int) $company_post->ID,
                             'title'      => get_the_title( $company_post ),
                             'slug'       => $company_post->post_name,
                             'status'     => $company_post->post_status,
                             'verified'   => (bool) get_post_meta( $company_post->ID, 'is_verified', true ),
-                            'viewCount'  => (int) get_post_meta( $company_post->ID, 'view_count', true ),
+                            'viewCount'  => $view_count,
                         );
                     }
                 }
@@ -68,9 +91,50 @@ class Sektorel_Session_Query {
                     'accountType' => (string) ( get_user_meta( $user_id, 'account_type', true ) ?: 'bireysel' ),
                     'role'        => $user && ! empty( $user->roles ) ? (string) reset( $user->roles ) : 'subscriber',
                     'company'     => $company,
+                    'stats'       => array(
+                        'leadCount'  => self::count_owned_posts( $user_id, 'lead' ),
+                        'jobCount'   => self::count_owned_posts( $user_id, 'career' ),
+                        'eventCount' => self::count_owned_posts( $user_id, 'event' ),
+                        'viewCount'  => $view_count,
+                    ),
+                    'recentItems' => self::get_recent_items( $user_id ),
                 );
             },
         ) );
+    }
+
+    private static function count_owned_posts( $user_id, $post_type ) {
+        $query = new WP_Query( array(
+            'post_type'      => $post_type,
+            'post_status'    => array( 'publish', 'pending', 'draft', 'private' ),
+            'author'         => (int) $user_id,
+            'posts_per_page' => 1,
+            'fields'         => 'ids',
+            'no_found_rows'  => false,
+        ) );
+
+        return (int) $query->found_posts;
+    }
+
+    private static function get_recent_items( $user_id ) {
+        $posts = get_posts( array(
+            'post_type'      => array( 'lead', 'career', 'event' ),
+            'post_status'    => array( 'publish', 'pending', 'draft', 'private' ),
+            'author'         => (int) $user_id,
+            'posts_per_page' => 5,
+            'orderby'        => 'date',
+            'order'          => 'DESC',
+        ) );
+
+        return array_map( function( $post ) {
+            return array(
+                'databaseId' => (int) $post->ID,
+                'title'      => get_the_title( $post ),
+                'type'       => $post->post_type,
+                'status'     => $post->post_status,
+                'date'       => get_post_time( DATE_ATOM, true, $post ),
+            );
+        }, $posts );
     }
 
     public static function get_owned_company_id( $user_id ) {
