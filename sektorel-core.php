@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Sektorel Core
  * Description: Sektörel Ajanda projesi için CPT, Taxonomy ve API tanımlarını içeren çekirdek eklenti.
- * Version: 1.6.0
+ * Version: 1.7.0
  * Author: Sektörel Ajanda Dev Team
  * Text Domain: sektorel-core
  */
@@ -15,7 +15,6 @@ define( 'SEKTOREL_CORE_PATH', plugin_dir_path( __FILE__ ) );
 define( 'SEKTOREL_CORE_URL', plugin_dir_url( __FILE__ ) );
 
 class Sektorel_Core {
-
     private static $instance = null;
 
     public static function get_instance() {
@@ -40,6 +39,7 @@ class Sektorel_Core {
 
         Sektorel_Company_Mutations::init();
         Sektorel_Auth_Mutations::init();
+        Sektorel_Session_Query::init();
 
         add_action( 'graphql_register_types', array( $this, 'register_graphql_types' ) );
     }
@@ -61,11 +61,11 @@ class Sektorel_Core {
         require_once SEKTOREL_CORE_PATH . 'includes/fields/location-fields.php';
 
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-demo-importer.php';
-
         require_once SEKTOREL_CORE_PATH . 'includes/auth/class-token-service.php';
         require_once SEKTOREL_CORE_PATH . 'includes/graphql/types.php';
         require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-auth-mutations.php';
         require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-company-mutations.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-session-query.php';
     }
 
     public function register_post_types() {

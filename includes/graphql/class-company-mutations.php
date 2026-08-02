@@ -12,20 +12,20 @@ class Sektorel_Company_Mutations {
 
     public static function register_mutations() {
         register_graphql_mutation( 'submitCompany', array(
-            'description' => 'Frontend üzerinden yeni firma ekler (Onay bekleyen).',
+            'description' => 'Giriş yapan kullanıcı adına onay bekleyen firma kaydı oluşturur.',
             'inputFields' => array(
-                'title'       => array( 'type' => 'String', 'description' => 'Firma Adı' ),
-                'officialName'=> array( 'type' => 'String', 'description' => 'Resmi Ünvan' ),
-                'sector'      => array( 'type' => 'String', 'description' => 'Ana Sektör Slug' ),
-                'companyType' => array( 'type' => 'String', 'description' => 'Ltd, A.Ş. vb.' ),
-                'description' => array( 'type' => 'String', 'description' => 'Hakkımızda' ),
-                'email'       => array( 'type' => 'String' ),
-                'phone'       => array( 'type' => 'String' ),
-                'website'     => array( 'type' => 'String' ),
-                'city'        => array( 'type' => 'String' ),
-                'district'    => array( 'type' => 'String' ),
-                'postalCode'  => array( 'type' => 'String' ), // EKLENDİ
-                'address'     => array( 'type' => 'String' ),
+                'title'        => array( 'type' => 'String' ),
+                'officialName' => array( 'type' => 'String' ),
+                'sector'       => array( 'type' => 'String' ),
+                'companyType'  => array( 'type' => 'String' ),
+                'description'  => array( 'type' => 'String' ),
+                'email'        => array( 'type' => 'String' ),
+                'phone'        => array( 'type' => 'String' ),
+                'website'      => array( 'type' => 'String' ),
+                'city'         => array( 'type' => 'String' ),
+                'district'     => array( 'type' => 'String' ),
+                'postalCode'   => array( 'type' => 'String' ),
+                'address'      => array( 'type' => 'String' ),
             ),
             'outputFields' => array(
                 'success' => array( 'type' => 'Boolean' ),
@@ -33,76 +33,131 @@ class Sektorel_Company_Mutations {
                 'postId'  => array( 'type' => 'ID' ),
             ),
             'mutateAndGetPayload' => function( $input ) {
-                try {
-                    $title = isset($input['title']) ? sanitize_text_field($input['title']) : '(İsimsiz Firma)';
-                    $desc = isset($input['description']) ? wp_kses_post($input['description']) : '';
-
-                    // 1. Post Oluştur (Pending durumunda)
-                    $post_data = array(
-                        'post_title'   => $title,
-                        'post_content' => $desc,
-                        'post_status'  => 'pending',
-                        'post_type'    => 'company'
-                    );
-
-                    $post_id = wp_insert_post( $post_data );
-
-                    if ( is_wp_error( $post_id ) ) {
-                        error_log('Sektorel Mutation Error: ' . $post_id->get_error_message());
-                        return array( 'success' => false, 'message' => 'Firma oluşturulamadı: ' . $post_id->get_error_message() );
-                    }
-
-                    // 2. Meta Verileri Kaydet
-                    if (isset($input['companyType'])) update_post_meta( $post_id, 'company_type', sanitize_text_field( $input['companyType'] ) );
-                    if (isset($input['officialName'])) update_post_meta( $post_id, 'official_name', sanitize_text_field( $input['officialName'] ) ); // official_name field'ı company-fields.php'de tanımlı olmayabilir, company_type gibi custom field ise tanımlanmalı.
-                    
-                    if (isset($input['email'])) update_post_meta( $post_id, 'email', sanitize_email( $input['email'] ) );
-                    if (isset($input['phone'])) update_post_meta( $post_id, 'phone', sanitize_text_field( $input['phone'] ) );
-                    if (isset($input['website'])) update_post_meta( $post_id, 'website', esc_url_raw( $input['website'] ) );
-                    if (isset($input['postalCode'])) update_post_meta( $post_id, 'postal_code', sanitize_text_field( $input['postalCode'] ) ); // EKLENDİ
-                    if (isset($input['address'])) update_post_meta( $post_id, 'address', sanitize_textarea_field( $input['address'] ) );
-
-                    // 3. Taksonomiler
-                    if ( ! empty( $input['sector'] ) ) {
-                        $sector_term = get_term_by( 'slug', $input['sector'], 'sector' );
-                        // Slug ile bulamazsa (veya slug name gibi geldiyse)
-                        if ( ! $sector_term ) $sector_term = get_term_by( 'name', $input['sector'], 'sector' );
-                        
-                        if ( $sector_term ) {
-                            wp_set_object_terms( $post_id, (int)$sector_term->term_id, 'sector' );
-                        }
-                    }
-
-                    if ( ! empty( $input['city'] ) ) {
-                        $city_term = get_term_by( 'slug', $input['city'], 'location' );
-                        if (!$city_term) $city_term = get_term_by( 'name', $input['city'], 'location' );
-
-                        if ( $city_term ) {
-                            $terms = array( (int)$city_term->term_id );
-                            
-                            if ( ! empty( $input['district'] ) ) {
-                                $dist_term = get_term_by( 'slug', $input['district'], 'location' );
-                                if (!$dist_term) $dist_term = get_term_by( 'name', $input['district'], 'location' );
-                                
-                                if ( $dist_term ) {
-                                    $terms[] = (int)$dist_term->term_id;
-                                }
-                            }
-                            wp_set_object_terms( $post_id, $terms, 'location' );
-                        }
-                    }
-
-                    return array(
-                        'success' => true,
-                        'message' => 'Firma başvurunuz alındı. Teşekkürler!',
-                        'postId'  => $post_id
-                    );
-
-                } catch (Exception $e) {
-                    error_log('Sektorel Mutation Exception: ' . $e->getMessage());
-                    return array( 'success' => false, 'message' => 'Sunucu hatası: ' . $e->getMessage() );
+                $user_id = get_current_user_id();
+                if ( ! $user_id ) {
+                    throw new \GraphQL\Error\UserError( 'Firma eklemek için giriş yapmanız gerekir.' );
                 }
+
+                $existing_company_id = Sektorel_Session_Query::get_owned_company_id( $user_id );
+                if ( $existing_company_id ) {
+                    throw new \GraphQL\Error\UserError( 'Bu hesaba bağlı bir firma kaydı zaten bulunuyor.' );
+                }
+
+                $title = sanitize_text_field( $input['title'] ?? '' );
+                if ( '' === $title ) {
+                    throw new \GraphQL\Error\UserError( 'Firma adı zorunludur.' );
+                }
+
+                $post_id = wp_insert_post( array(
+                    'post_title'   => $title,
+                    'post_content' => wp_kses_post( $input['description'] ?? '' ),
+                    'post_status'  => 'pending',
+                    'post_type'    => 'company',
+                    'post_author'  => $user_id,
+                ), true );
+
+                if ( is_wp_error( $post_id ) ) {
+                    throw new \GraphQL\Error\UserError( 'Firma oluşturulamadı: ' . $post_id->get_error_message() );
+                }
+
+                self::save_company_meta( $post_id, $input );
+                self::save_company_terms( $post_id, $input );
+
+                update_user_meta( $user_id, '_sektorel_company_id', $post_id );
+                update_user_meta( $user_id, 'account_type', 'kurumsal' );
+                update_user_meta( $user_id, 'company_name', $title );
+
+                return array(
+                    'success' => true,
+                    'message' => 'Firma başvurunuz alındı. İnceleme sonrası yayına alınacaktır.',
+                    'postId'  => $post_id,
+                );
+            },
+        ) );
+    }
+
+    public static function create_company_for_user( $user_id, $input ) {
+        $title = sanitize_text_field( $input['companyName'] ?? '' );
+        if ( ! $user_id || '' === $title ) {
+            return 0;
+        }
+
+        $post_id = wp_insert_post( array(
+            'post_title'  => $title,
+            'post_status' => 'pending',
+            'post_type'   => 'company',
+            'post_author' => (int) $user_id,
+        ), true );
+
+        if ( is_wp_error( $post_id ) ) {
+            return 0;
+        }
+
+        update_post_meta( $post_id, 'official_name', $title );
+        update_post_meta( $post_id, 'tax_office', sanitize_text_field( $input['taxOffice'] ?? '' ) );
+        update_post_meta( $post_id, 'tax_number', sanitize_text_field( $input['taxNumber'] ?? '' ) );
+
+        if ( ! empty( $input['sector'] ) ) {
+            self::assign_term( $post_id, $input['sector'], 'sector' );
+        }
+
+        update_user_meta( $user_id, '_sektorel_company_id', $post_id );
+        return (int) $post_id;
+    }
+
+    private static function save_company_meta( $post_id, $input ) {
+        $meta_fields = array(
+            'company_type' => 'companyType',
+            'official_name'=> 'officialName',
+            'phone'        => 'phone',
+            'postal_code'  => 'postalCode',
+            'address'      => 'address',
+        );
+
+        foreach ( $meta_fields as $meta_key => $input_key ) {
+            if ( isset( $input[ $input_key ] ) ) {
+                update_post_meta( $post_id, $meta_key, sanitize_text_field( $input[ $input_key ] ) );
             }
-        ));
+        }
+
+        if ( isset( $input['email'] ) ) {
+            update_post_meta( $post_id, 'email', sanitize_email( $input['email'] ) );
+        }
+        if ( isset( $input['website'] ) ) {
+            update_post_meta( $post_id, 'website', esc_url_raw( $input['website'] ) );
+        }
+    }
+
+    private static function save_company_terms( $post_id, $input ) {
+        if ( ! empty( $input['sector'] ) ) {
+            self::assign_term( $post_id, $input['sector'], 'sector' );
+        }
+
+        $location_ids = array();
+        foreach ( array( 'city', 'district' ) as $key ) {
+            if ( empty( $input[ $key ] ) ) {
+                continue;
+            }
+            $term = self::find_term( $input[ $key ], 'location' );
+            if ( $term ) {
+                $location_ids[] = (int) $term->term_id;
+            }
+        }
+
+        if ( $location_ids ) {
+            wp_set_object_terms( $post_id, array_values( array_unique( $location_ids ) ), 'location' );
+        }
+    }
+
+    private static function assign_term( $post_id, $value, $taxonomy ) {
+        $term = self::find_term( $value, $taxonomy );
+        if ( $term ) {
+            wp_set_object_terms( $post_id, array( (int) $term->term_id ), $taxonomy );
+        }
+    }
+
+    private static function find_term( $value, $taxonomy ) {
+        $value = sanitize_text_field( $value );
+        return get_term_by( 'slug', $value, $taxonomy ) ?: get_term_by( 'name', $value, $taxonomy );
     }
 }
