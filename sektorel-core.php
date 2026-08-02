@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Sektorel Core
  * Description: Sektörel Ajanda projesi için CPT, Taxonomy ve API tanımlarını içeren çekirdek eklenti.
- * Version: 1.13.0
+ * Version: 1.14.0
  * Author: Sektörel Ajanda Dev Team
  * Text Domain: sektorel-core
  */
@@ -44,6 +44,7 @@ class Sektorel_Core {
         Sektorel_Session_Query::init();
         Sektorel_Owned_Content::init();
         Sektorel_Content_Submissions::init();
+        Sektorel_Offers::init();
 
         add_action( 'graphql_register_types', array( $this, 'register_graphql_types' ) );
     }
@@ -53,6 +54,7 @@ class Sektorel_Core {
         require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-lead.php';
         require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-event.php';
         require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-career.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-offer.php';
 
         require_once SEKTOREL_CORE_PATH . 'includes/taxonomies/class-sector.php';
         require_once SEKTOREL_CORE_PATH . 'includes/taxonomies/class-location.php';
@@ -74,6 +76,7 @@ class Sektorel_Core {
         require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-session-query.php';
         require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-owned-content.php';
         require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-content-submissions.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-offers.php';
     }
 
     public function register_post_types() {
@@ -81,6 +84,7 @@ class Sektorel_Core {
         Sektorel_Lead_CPT::register();
         Sektorel_Event_CPT::register();
         Sektorel_Career_CPT::register();
+        Sektorel_Offer_CPT::register();
     }
 
     public function register_taxonomies() {
