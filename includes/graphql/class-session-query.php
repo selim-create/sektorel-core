@@ -24,10 +24,10 @@ class Sektorel_Session_Query {
 
         register_graphql_object_type( 'SektorelDashboardStats', array(
             'fields' => array(
-                'leadCount'   => array( 'type' => 'Int' ),
-                'jobCount'    => array( 'type' => 'Int' ),
-                'eventCount'  => array( 'type' => 'Int' ),
-                'viewCount'   => array( 'type' => 'Int' ),
+                'leadCount'  => array( 'type' => 'Int' ),
+                'jobCount'   => array( 'type' => 'Int' ),
+                'eventCount' => array( 'type' => 'Int' ),
+                'viewCount'  => array( 'type' => 'Int' ),
             ),
         ) );
 
@@ -49,6 +49,7 @@ class Sektorel_Session_Query {
                 'phone'       => array( 'type' => 'String' ),
                 'accountType' => array( 'type' => 'String' ),
                 'role'        => array( 'type' => 'String' ),
+                'companyRole' => array( 'type' => 'String' ),
                 'company'     => array( 'type' => 'SektorelCompanySummary' ),
                 'stats'       => array( 'type' => 'SektorelDashboardStats' ),
                 'recentItems' => array( 'type' => array( 'list_of' => 'SektorelDashboardItem' ) ),
@@ -63,10 +64,12 @@ class Sektorel_Session_Query {
                     throw new \GraphQL\Error\UserError( 'Bu alan için giriş yapmanız gerekir.' );
                 }
 
-                $user       = get_userdata( $user_id );
-                $company_id = self::get_owned_company_id( $user_id );
-                $company    = null;
-                $view_count = 0;
+                $user         = get_userdata( $user_id );
+                $owned_id     = self::get_owned_company_id( $user_id );
+                $company_id   = $owned_id ?: self::get_member_company_id( $user_id );
+                $company_role = $owned_id ? 'owner' : (string) ( get_user_meta( $user_id, '_sektorel_company_role', true ) ?: '' );
+                $company      = null;
+                $view_count   = 0;
 
                 if ( $company_id ) {
                     $company_post = get_post( $company_id );
@@ -90,6 +93,7 @@ class Sektorel_Session_Query {
                     'phone'       => (string) get_user_meta( $user_id, 'phone', true ),
                     'accountType' => (string) ( get_user_meta( $user_id, 'account_type', true ) ?: 'bireysel' ),
                     'role'        => $user && ! empty( $user->roles ) ? (string) reset( $user->roles ) : 'subscriber',
+                    'companyRole' => $company_role,
                     'company'     => $company,
                     'stats'       => array(
                         'leadCount'  => self::count_owned_posts( $user_id, 'lead' ),
@@ -140,7 +144,10 @@ class Sektorel_Session_Query {
     public static function get_owned_company_id( $user_id ) {
         $company_id = (int) get_user_meta( $user_id, '_sektorel_company_id', true );
         if ( $company_id && 'company' === get_post_type( $company_id ) ) {
-            return $company_id;
+            $company = get_post( $company_id );
+            if ( $company && (int) $company->post_author === (int) $user_id ) {
+                return $company_id;
+            }
         }
 
         $owned = get_posts( array(
@@ -160,5 +167,14 @@ class Sektorel_Session_Query {
         }
 
         return 0;
+    }
+
+    public static function get_member_company_id( $user_id ) {
+        $company_id = (int) get_user_meta( $user_id, '_sektorel_member_company_id', true );
+        return $company_id && 'company' === get_post_type( $company_id ) ? $company_id : 0;
+    }
+
+    public static function get_accessible_company_id( $user_id ) {
+        return self::get_owned_company_id( $user_id ) ?: self::get_member_company_id( $user_id );
     }
 }
