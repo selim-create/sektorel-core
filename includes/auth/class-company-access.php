@@ -198,7 +198,9 @@ class Sektorel_Company_Access {
     }
 
     public static function attach_post_to_context( $post_id, $context ) {
-        update_post_meta( $post_id, '_sektorel_created_by', (int) $context['user_id'] );
+        if ( ! get_post_meta( $post_id, '_sektorel_created_by', true ) ) {
+            update_post_meta( $post_id, '_sektorel_created_by', (int) $context['user_id'] );
+        }
         if ( ! empty( $context['company_id'] ) ) {
             update_post_meta( $post_id, '_sektorel_company_id', (int) $context['company_id'] );
         } else {
