@@ -11,38 +11,41 @@ class Sektorel_Company_Settings {
     }
 
     public static function register_types() {
+        $settings_fields = array_merge(
+            array(
+                'databaseId'   => array( 'type' => 'Int' ),
+                'title'        => array( 'type' => 'String' ),
+                'officialName' => array( 'type' => 'String' ),
+                'description'  => array( 'type' => 'String' ),
+                'companyType'  => array( 'type' => 'String' ),
+                'email'        => array( 'type' => 'String' ),
+                'phone'        => array( 'type' => 'String' ),
+                'website'      => array( 'type' => 'String' ),
+                'address'      => array( 'type' => 'String' ),
+                'postalCode'   => array( 'type' => 'String' ),
+                'sector'       => array( 'type' => 'String' ),
+                'city'         => array( 'type' => 'String' ),
+                'district'     => array( 'type' => 'String' ),
+                'status'       => array( 'type' => 'String' ),
+            ),
+            Sektorel_Company_Profile::settings_fields()
+        );
+
         register_graphql_object_type( 'SektorelCompanySettings', array(
             'description' => 'Giriş yapan kullanıcının sahip olduğu firma ayarları.',
-            'fields'      => array(
-                'databaseId'  => array( 'type' => 'Int' ),
-                'title'       => array( 'type' => 'String' ),
-                'officialName'=> array( 'type' => 'String' ),
-                'description' => array( 'type' => 'String' ),
-                'companyType' => array( 'type' => 'String' ),
-                'email'       => array( 'type' => 'String' ),
-                'phone'       => array( 'type' => 'String' ),
-                'website'     => array( 'type' => 'String' ),
-                'address'     => array( 'type' => 'String' ),
-                'postalCode'  => array( 'type' => 'String' ),
-                'sector'      => array( 'type' => 'String' ),
-                'city'        => array( 'type' => 'String' ),
-                'district'    => array( 'type' => 'String' ),
-                'status'      => array( 'type' => 'String' ),
-            ),
+            'fields'      => $settings_fields,
         ) );
 
         register_graphql_field( 'RootQuery', 'sektorelCompanySettings', array(
             'type'        => 'SektorelCompanySettings',
             'description' => 'Oturum sahibinin firma ayarlarını döndürür.',
             'resolve'     => function() {
-                $company_id = self::get_owned_company_id_or_error();
-                return self::format_company_settings( $company_id );
+                return self::format_company_settings( self::get_owned_company_id_or_error() );
             },
         ) );
 
-        register_graphql_mutation( 'updateSektorelCompany', array(
-            'description' => 'Oturum sahibinin firma profilini günceller.',
-            'inputFields' => array(
+        $mutation_fields = array_merge(
+            array(
                 'title'        => array( 'type' => 'String' ),
                 'officialName' => array( 'type' => 'String' ),
                 'description'  => array( 'type' => 'String' ),
@@ -56,6 +59,12 @@ class Sektorel_Company_Settings {
                 'city'         => array( 'type' => 'String' ),
                 'district'     => array( 'type' => 'String' ),
             ),
+            Sektorel_Company_Profile::mutation_fields()
+        );
+
+        register_graphql_mutation( 'updateSektorelCompany', array(
+            'description' => 'Oturum sahibinin firma profilini günceller.',
+            'inputFields' => $mutation_fields,
             'outputFields' => array(
                 'success' => array( 'type' => 'Boolean' ),
                 'message' => array( 'type' => 'String' ),
@@ -63,10 +72,15 @@ class Sektorel_Company_Settings {
             ),
             'mutateAndGetPayload' => function( $input ) {
                 $company_id = self::get_owned_company_id_or_error();
-                $title      = sanitize_text_field( $input['title'] ?? '' );
+                $title = sanitize_text_field( $input['title'] ?? '' );
 
                 if ( '' === $title ) {
                     throw new \GraphQL\Error\UserError( 'Firma adı zorunludur.' );
+                }
+
+                $email = sanitize_email( $input['email'] ?? '' );
+                if ( ! empty( $input['email'] ) && ! is_email( $email ) ) {
+                    throw new \GraphQL\Error\UserError( 'Geçerli bir e-posta adresi girin.' );
                 }
 
                 $updated = wp_update_post( array(
@@ -81,13 +95,13 @@ class Sektorel_Company_Settings {
 
                 self::save_meta( $company_id, $input );
                 self::save_terms( $company_id, $input );
+                Sektorel_Company_Profile::save_profile( $company_id, $input );
 
-                $user_id = get_current_user_id();
-                update_user_meta( $user_id, 'company_name', $title );
+                update_user_meta( get_current_user_id(), 'company_name', $title );
 
                 return array(
                     'success' => true,
-                    'message' => 'Firma bilgileriniz güncellendi.',
+                    'message' => 'Firma profiliniz güncellendi.',
                     'company' => self::format_company_settings( $company_id ),
                 );
             },
@@ -96,7 +110,6 @@ class Sektorel_Company_Settings {
 
     private static function get_owned_company_id_or_error() {
         $user_id = get_current_user_id();
-
         if ( ! $user_id ) {
             throw new \GraphQL\Error\UserError( 'Bu işlem için giriş yapmanız gerekir.' );
         }
@@ -115,11 +128,10 @@ class Sektorel_Company_Settings {
     }
 
     private static function format_company_settings( $company_id ) {
-        $post      = get_post( $company_id );
-        $sector    = self::first_term_slug( $company_id, 'sector' );
+        $post = get_post( $company_id );
         $locations = wp_get_object_terms( $company_id, 'location', array( 'orderby' => 'parent', 'order' => 'ASC' ) );
-        $city      = '';
-        $district  = '';
+        $city = '';
+        $district = '';
 
         if ( ! is_wp_error( $locations ) ) {
             foreach ( $locations as $term ) {
@@ -131,21 +143,24 @@ class Sektorel_Company_Settings {
             }
         }
 
-        return array(
-            'databaseId'   => (int) $company_id,
-            'title'        => get_the_title( $company_id ),
-            'officialName' => (string) get_post_meta( $company_id, 'official_name', true ),
-            'description'  => $post ? $post->post_content : '',
-            'companyType'  => (string) get_post_meta( $company_id, 'company_type', true ),
-            'email'        => (string) get_post_meta( $company_id, 'email', true ),
-            'phone'        => (string) get_post_meta( $company_id, 'phone', true ),
-            'website'      => (string) get_post_meta( $company_id, 'website', true ),
-            'address'      => (string) get_post_meta( $company_id, 'address', true ),
-            'postalCode'   => (string) get_post_meta( $company_id, 'postal_code', true ),
-            'sector'       => $sector,
-            'city'         => $city,
-            'district'     => $district,
-            'status'       => $post ? $post->post_status : '',
+        return array_merge(
+            array(
+                'databaseId'   => (int) $company_id,
+                'title'        => get_the_title( $company_id ),
+                'officialName' => (string) get_post_meta( $company_id, 'official_name', true ),
+                'description'  => $post ? $post->post_content : '',
+                'companyType'  => (string) get_post_meta( $company_id, 'company_type', true ),
+                'email'        => (string) get_post_meta( $company_id, 'email', true ),
+                'phone'        => (string) get_post_meta( $company_id, 'phone', true ),
+                'website'      => (string) get_post_meta( $company_id, 'website', true ),
+                'address'      => (string) get_post_meta( $company_id, 'address', true ),
+                'postalCode'   => (string) get_post_meta( $company_id, 'postal_code', true ),
+                'sector'       => self::first_term_slug( $company_id, 'sector' ),
+                'city'         => $city,
+                'district'     => $district,
+                'status'       => $post ? $post->post_status : '',
+            ),
+            Sektorel_Company_Profile::settings_payload( $company_id )
         );
     }
 
@@ -162,13 +177,15 @@ class Sektorel_Company_Settings {
         }
 
         update_post_meta( $company_id, 'email', sanitize_email( $input['email'] ?? '' ) );
-        update_post_meta( $company_id, 'website', esc_url_raw( $input['website'] ?? '' ) );
+        update_post_meta( $company_id, 'website', esc_url_raw( $input['website'] ?? '', array( 'http', 'https' ) ) );
         update_post_meta( $company_id, 'address', sanitize_textarea_field( $input['address'] ?? '' ) );
     }
 
     private static function save_terms( $company_id, $input ) {
         if ( ! empty( $input['sector'] ) ) {
             self::set_single_term( $company_id, $input['sector'], 'sector' );
+        } else {
+            wp_set_object_terms( $company_id, array(), 'sector', false );
         }
 
         $location_ids = array();
@@ -176,13 +193,11 @@ class Sektorel_Company_Settings {
             if ( empty( $input[ $key ] ) ) {
                 continue;
             }
-
             $term = self::find_term( $input[ $key ], 'location' );
             if ( $term ) {
                 $location_ids[] = (int) $term->term_id;
             }
         }
-
         wp_set_object_terms( $company_id, array_values( array_unique( $location_ids ) ), 'location', false );
     }
 
