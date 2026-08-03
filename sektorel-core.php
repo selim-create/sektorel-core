@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Sektorel Core
  * Description: Sektörel Ajanda projesi için CPT, Taxonomy ve API tanımlarını içeren çekirdek eklenti.
- * Version: 1.17.0
+ * Version: 1.17.1
  * Author: Sektörel Ajanda Dev Team
  * Text Domain: sektorel-core
  */
@@ -28,6 +28,7 @@ class Sektorel_Core {
         $this->includes();
 
         Sektorel_Token_Service::init();
+        Sektorel_Company_Media::init();
 
         add_action( 'init', array( $this, 'register_post_types' ) );
         add_action( 'init', array( $this, 'register_taxonomies' ) );
@@ -44,6 +45,7 @@ class Sektorel_Core {
         Sektorel_Auth_Mutations::init();
         Sektorel_Password_Reset_Mutations::init();
         Sektorel_Session_Query::init();
+        Sektorel_Location_Options::init();
         Sektorel_Owned_Content::init();
         Sektorel_Content_Submissions::init();
         Sektorel_Offers::init();
@@ -70,6 +72,7 @@ class Sektorel_Core {
 
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-demo-importer.php';
         require_once SEKTOREL_CORE_PATH . 'includes/auth/class-token-service.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/rest/class-company-media.php';
         require_once SEKTOREL_CORE_PATH . 'includes/graphql/types.php';
         require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-auth-mutations.php';
         require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-password-reset-mutations.php';
@@ -78,6 +81,7 @@ class Sektorel_Core {
         require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-company-settings.php';
         require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-company-members.php';
         require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-session-query.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-location-options.php';
         require_once SEKTOREL_CORE_PATH . 'includes/auth/class-company-access.php';
         require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-owned-content.php';
         require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-content-submissions.php';
