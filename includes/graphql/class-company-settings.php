@@ -78,17 +78,22 @@ class Sektorel_Company_Settings {
                     throw new \GraphQL\Error\UserError( 'Firma adı zorunludur.' );
                 }
 
-                $email = sanitize_email( $input['email'] ?? '' );
-                if ( ! empty( $input['email'] ) && ! is_email( $email ) ) {
-                    throw new \GraphQL\Error\UserError( 'Geçerli bir e-posta adresi girin.' );
+                if ( array_key_exists( 'email', $input ) ) {
+                    $email = sanitize_email( $input['email'] );
+                    if ( ! empty( $input['email'] ) && ! is_email( $email ) ) {
+                        throw new \GraphQL\Error\UserError( 'Geçerli bir e-posta adresi girin.' );
+                    }
                 }
 
-                $updated = wp_update_post( array(
-                    'ID'           => $company_id,
-                    'post_title'   => $title,
-                    'post_content' => wp_kses_post( $input['description'] ?? '' ),
-                ), true );
+                $post_update = array(
+                    'ID'         => $company_id,
+                    'post_title' => $title,
+                );
+                if ( array_key_exists( 'description', $input ) ) {
+                    $post_update['post_content'] = wp_kses_post( $input['description'] );
+                }
 
+                $updated = wp_update_post( $post_update, true );
                 if ( is_wp_error( $updated ) ) {
                     throw new \GraphQL\Error\UserError( 'Firma güncellenemedi: ' . $updated->get_error_message() );
                 }
@@ -98,6 +103,7 @@ class Sektorel_Company_Settings {
                 Sektorel_Company_Profile::save_profile( $company_id, $input );
 
                 update_user_meta( get_current_user_id(), 'company_name', $title );
+                clean_post_cache( $company_id );
 
                 return array(
                     'success' => true,
@@ -135,10 +141,27 @@ class Sektorel_Company_Settings {
 
         if ( ! is_wp_error( $locations ) ) {
             foreach ( $locations as $term ) {
-                if ( 0 === (int) $term->parent && '' === $city ) {
+                $type = (string) get_term_meta( $term->term_id, 'location_type', true );
+                if ( 'city' === $type && '' === $city ) {
                     $city = $term->slug;
-                } elseif ( 0 !== (int) $term->parent && '' === $district ) {
+                } elseif ( 'district' === $type && '' === $district ) {
                     $district = $term->slug;
+                }
+            }
+
+            // Eski kayıtlarda location_type bulunmuyorsa hiyerarşiden tahmin et.
+            if ( '' === $city ) {
+                foreach ( $locations as $term ) {
+                    $parent = $term->parent ? get_term( $term->parent, 'location' ) : null;
+                    $parent_type = $parent && ! is_wp_error( $parent )
+                        ? (string) get_term_meta( $parent->term_id, 'location_type', true )
+                        : '';
+
+                    if ( 'country' === $parent_type ) {
+                        $city = $term->slug;
+                    } elseif ( $term->parent && '' === $district ) {
+                        $district = $term->slug;
+                    }
                 }
             }
         }
@@ -173,31 +196,56 @@ class Sektorel_Company_Settings {
         );
 
         foreach ( $text_fields as $meta_key => $input_key ) {
-            update_post_meta( $company_id, $meta_key, sanitize_text_field( $input[ $input_key ] ?? '' ) );
+            if ( array_key_exists( $input_key, $input ) ) {
+                update_post_meta( $company_id, $meta_key, sanitize_text_field( $input[ $input_key ] ) );
+            }
         }
 
-        update_post_meta( $company_id, 'email', sanitize_email( $input['email'] ?? '' ) );
-        update_post_meta( $company_id, 'website', esc_url_raw( $input['website'] ?? '', array( 'http', 'https' ) ) );
-        update_post_meta( $company_id, 'address', sanitize_textarea_field( $input['address'] ?? '' ) );
+        if ( array_key_exists( 'email', $input ) ) {
+            update_post_meta( $company_id, 'email', sanitize_email( $input['email'] ) );
+        }
+        if ( array_key_exists( 'website', $input ) ) {
+            update_post_meta( $company_id, 'website', esc_url_raw( $input['website'], array( 'http', 'https' ) ) );
+        }
+        if ( array_key_exists( 'address', $input ) ) {
+            update_post_meta( $company_id, 'address', sanitize_textarea_field( $input['address'] ) );
+        }
     }
 
     private static function save_terms( $company_id, $input ) {
-        if ( ! empty( $input['sector'] ) ) {
-            self::set_single_term( $company_id, $input['sector'], 'sector' );
-        } else {
-            wp_set_object_terms( $company_id, array(), 'sector', false );
+        if ( array_key_exists( 'sector', $input ) ) {
+            if ( ! empty( $input['sector'] ) ) {
+                self::set_single_term( $company_id, $input['sector'], 'sector' );
+            } else {
+                wp_set_object_terms( $company_id, array(), 'sector', false );
+            }
+        }
+
+        if ( ! array_key_exists( 'city', $input ) && ! array_key_exists( 'district', $input ) ) {
+            return;
         }
 
         $location_ids = array();
-        foreach ( array( 'city', 'district' ) as $key ) {
-            if ( empty( $input[ $key ] ) ) {
-                continue;
+        $city_term = null;
+        if ( ! empty( $input['city'] ) ) {
+            $city_term = self::find_term( $input['city'], 'location' );
+            if ( ! $city_term || 'city' !== (string) get_term_meta( $city_term->term_id, 'location_type', true ) ) {
+                throw new \GraphQL\Error\UserError( 'Seçilen şehir bulunamadı.' );
             }
-            $term = self::find_term( $input[ $key ], 'location' );
-            if ( $term ) {
-                $location_ids[] = (int) $term->term_id;
-            }
+            $location_ids[] = (int) $city_term->term_id;
         }
+
+        if ( ! empty( $input['district'] ) ) {
+            $district_term = self::find_term( $input['district'], 'location' );
+            if ( ! $district_term || 'district' !== (string) get_term_meta( $district_term->term_id, 'location_type', true ) ) {
+                throw new \GraphQL\Error\UserError( 'Seçilen ilçe bulunamadı.' );
+            }
+            if ( $city_term && (int) $district_term->parent !== (int) $city_term->term_id ) {
+                throw new \GraphQL\Error\UserError( 'Seçilen ilçe bu şehre bağlı değil.' );
+            }
+            $location_ids[] = (int) $district_term->term_id;
+        }
+
         wp_set_object_terms( $company_id, array_values( array_unique( $location_ids ) ), 'location', false );
     }
 
