@@ -74,6 +74,24 @@ class Sektorel_Company_Media {
             return new WP_Error( 'sektorel_file_type', 'Yalnızca JPG, PNG veya WebP görseller yüklenebilir.', array( 'status' => 400 ) );
         }
 
+        $image_size = wp_getimagesize( $file['tmp_name'] );
+        if ( ! is_array( $image_size ) || empty( $image_size[0] ) || empty( $image_size[1] ) ) {
+            return new WP_Error( 'sektorel_image_invalid', 'Görsel ölçüleri okunamadı.', array( 'status' => 400 ) );
+        }
+
+        $width = (int) $image_size[0];
+        $height = (int) $image_size[1];
+        if ( 'logo' === $type && $width !== $height ) {
+            return new WP_Error( 'sektorel_logo_square', 'Firma logosu kare olmalıdır. Lütfen 1:1 oranında bir görsel yükleyin.', array( 'status' => 400 ) );
+        }
+
+        if ( 'cover' === $type ) {
+            $ratio = $height > 0 ? $width / $height : 0;
+            if ( $ratio < 2.95 || $ratio > 3.05 ) {
+                return new WP_Error( 'sektorel_cover_ratio', 'Kapak görseli 3:1 oranında kırpılmış olmalıdır.', array( 'status' => 400 ) );
+            }
+        }
+
         $user_id = get_current_user_id();
         $company_id = Sektorel_Session_Query::get_owned_company_id( $user_id );
 
@@ -84,7 +102,6 @@ class Sektorel_Company_Media {
         require_once ABSPATH . 'wp-admin/includes/file.php';
         require_once ABSPATH . 'wp-admin/includes/image.php';
 
-        // REST multipart isteklerinde klasik form nonce alanı bulunmaz.
         $uploaded = wp_handle_upload(
             $file,
             array(
@@ -136,6 +153,8 @@ class Sektorel_Company_Media {
 
         update_post_meta( $attachment_id, '_sektorel_company_id', (int) $company_id );
         update_post_meta( $attachment_id, '_sektorel_media_type', $type );
+        update_post_meta( $attachment_id, '_sektorel_image_width', $width );
+        update_post_meta( $attachment_id, '_sektorel_image_height', $height );
 
         if ( 'logo' === $type ) {
             update_post_meta( $company_id, 'logo_image', esc_url_raw( $url ) );
@@ -157,6 +176,8 @@ class Sektorel_Company_Media {
             'type'         => $type,
             'url'          => esc_url_raw( $url ),
             'thumbnailUrl' => wp_get_attachment_image_url( $attachment_id, 'medium' ) ?: esc_url_raw( $url ),
+            'width'        => $width,
+            'height'       => $height,
         ) );
     }
 
