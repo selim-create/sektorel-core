@@ -30,9 +30,9 @@ class Sektorel_Content_Submissions {
             ),
             'outputFields' => self::output_fields(),
             'mutateAndGetPayload' => function( $input ) {
-                $user_id = self::require_user();
-                self::enforce_rate_limit( $user_id, 'lead' );
-                $post_id = self::create_post( $user_id, 'lead', $input );
+                $context = Sektorel_Company_Access::require_context( true );
+                self::enforce_rate_limit( $context['user_id'], 'lead' );
+                $post_id = self::create_post( $context, 'lead', $input );
 
                 $allowed_types = array( 'alim', 'hizmet', 'bayilik', 'ortaklik', 'satis' );
                 $lead_type = sanitize_key( $input['leadType'] ?? 'alim' );
@@ -72,14 +72,13 @@ class Sektorel_Content_Submissions {
             ),
             'outputFields' => self::output_fields(),
             'mutateAndGetPayload' => function( $input ) {
-                $user_id = self::require_user();
-                self::enforce_rate_limit( $user_id, 'career' );
-                $post_id = self::create_post( $user_id, 'career', $input );
+                $context = Sektorel_Company_Access::require_context( true );
+                self::enforce_rate_limit( $context['user_id'], 'career' );
+                $post_id = self::create_post( $context, 'career', $input );
 
-                $company_id = Sektorel_Session_Query::get_owned_company_id( $user_id );
                 $company_name = sanitize_text_field( $input['companyName'] ?? '' );
-                if ( ! $company_name && $company_id ) {
-                    $company_name = get_the_title( $company_id );
+                if ( ! $company_name && $context['company_id'] ) {
+                    $company_name = get_the_title( $context['company_id'] );
                 }
 
                 update_post_meta( $post_id, 'company_name', $company_name );
@@ -114,9 +113,9 @@ class Sektorel_Content_Submissions {
             ),
             'outputFields' => self::output_fields(),
             'mutateAndGetPayload' => function( $input ) {
-                $user_id = self::require_user();
-                self::enforce_rate_limit( $user_id, 'event' );
-                $post_id = self::create_post( $user_id, 'event', $input );
+                $context = Sektorel_Company_Access::require_context( true );
+                self::enforce_rate_limit( $context['user_id'], 'event' );
+                $post_id = self::create_post( $context, 'event', $input );
 
                 update_post_meta( $post_id, 'is_official', 0 );
                 update_post_meta( $post_id, 'event_type', sanitize_key( $input['eventType'] ?? 'etkinlik' ) );
@@ -142,15 +141,7 @@ class Sektorel_Content_Submissions {
         );
     }
 
-    private static function require_user() {
-        $user_id = get_current_user_id();
-        if ( ! $user_id ) {
-            throw new \GraphQL\Error\UserError( 'Bu işlem için giriş yapmanız gerekir.' );
-        }
-        return (int) $user_id;
-    }
-
-    private static function create_post( $user_id, $post_type, $input ) {
+    private static function create_post( $context, $post_type, $input ) {
         $title = sanitize_text_field( $input['title'] ?? '' );
         $description = wp_kses_post( $input['description'] ?? '' );
 
@@ -164,7 +155,7 @@ class Sektorel_Content_Submissions {
         $post_id = wp_insert_post( array(
             'post_type'    => $post_type,
             'post_status'  => 'pending',
-            'post_author'  => $user_id,
+            'post_author'  => (int) $context['user_id'],
             'post_title'   => $title,
             'post_content' => $description,
         ), true );
@@ -173,6 +164,7 @@ class Sektorel_Content_Submissions {
             throw new \GraphQL\Error\UserError( 'İçerik oluşturulamadı.' );
         }
 
+        Sektorel_Company_Access::attach_post_to_context( $post_id, $context );
         return (int) $post_id;
     }
 

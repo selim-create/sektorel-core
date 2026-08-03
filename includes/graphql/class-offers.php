@@ -6,8 +6,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Sektorel_Offers {
 
-    private static $statuses = array( 'pending', 'accepted', 'rejected' );
-
     public static function init() {
         add_action( 'graphql_register_types', array( __CLASS__, 'register_types' ) );
     }
@@ -15,34 +13,35 @@ class Sektorel_Offers {
     public static function register_types() {
         register_graphql_object_type( 'SektorelOfferItem', array(
             'fields' => array(
-                'databaseId'      => array( 'type' => 'Int' ),
-                'leadDatabaseId'  => array( 'type' => 'Int' ),
-                'leadTitle'       => array( 'type' => 'String' ),
-                'leadSlug'        => array( 'type' => 'String' ),
-                'bidderName'      => array( 'type' => 'String' ),
-                'bidderCompany'   => array( 'type' => 'String' ),
-                'amount'          => array( 'type' => 'String' ),
-                'currency'        => array( 'type' => 'String' ),
-                'deliveryDays'    => array( 'type' => 'Int' ),
-                'validityDays'    => array( 'type' => 'Int' ),
-                'includesShipping'=> array( 'type' => 'Boolean' ),
-                'message'         => array( 'type' => 'String' ),
-                'status'          => array( 'type' => 'String' ),
-                'date'            => array( 'type' => 'String' ),
+                'databaseId'       => array( 'type' => 'Int' ),
+                'leadDatabaseId'   => array( 'type' => 'Int' ),
+                'leadTitle'        => array( 'type' => 'String' ),
+                'leadSlug'         => array( 'type' => 'String' ),
+                'bidderName'       => array( 'type' => 'String' ),
+                'bidderCompany'    => array( 'type' => 'String' ),
+                'amount'           => array( 'type' => 'String' ),
+                'currency'         => array( 'type' => 'String' ),
+                'deliveryDays'     => array( 'type' => 'Int' ),
+                'validityDays'     => array( 'type' => 'Int' ),
+                'includesShipping' => array( 'type' => 'Boolean' ),
+                'message'          => array( 'type' => 'String' ),
+                'status'           => array( 'type' => 'String' ),
+                'date'             => array( 'type' => 'String' ),
             ),
         ) );
 
         register_graphql_field( 'RootQuery', 'sektorelIncomingOffers', array(
             'type' => array( 'list_of' => 'SektorelOfferItem' ),
             'resolve' => function() {
-                $user_id = self::require_user();
-                $lead_ids = get_posts( array(
-                    'post_type'      => 'lead',
-                    'post_status'    => array( 'publish', 'pending', 'draft', 'private' ),
-                    'author'         => $user_id,
-                    'fields'         => 'ids',
-                    'posts_per_page' => 200,
-                ) );
+                $context = self::require_company_owner();
+                $lead_posts = Sektorel_Company_Access::get_accessible_posts(
+                    $context['user_id'],
+                    array( 'lead' ),
+                    200
+                );
+                $lead_ids = array_map( function( $lead ) {
+                    return (int) $lead->ID;
+                }, $lead_posts );
 
                 if ( empty( $lead_ids ) ) {
                     return array();
@@ -57,7 +56,7 @@ class Sektorel_Offers {
                     'meta_query'     => array(
                         array(
                             'key'     => 'lead_id',
-                            'value'   => array_map( 'intval', $lead_ids ),
+                            'value'   => $lead_ids,
                             'compare' => 'IN',
                             'type'    => 'NUMERIC',
                         ),
@@ -84,7 +83,8 @@ class Sektorel_Offers {
                 'offerId' => array( 'type' => 'Int' ),
             ),
             'mutateAndGetPayload' => function( $input ) {
-                $user_id = self::require_user();
+                $context = Sektorel_Company_Access::require_context( true );
+                $user_id = (int) $context['user_id'];
                 $slug = sanitize_title( $input['leadSlug'] ?? '' );
                 $lead = get_page_by_path( $slug, OBJECT, 'lead' );
 
@@ -92,14 +92,17 @@ class Sektorel_Offers {
                     throw new \GraphQL\Error\UserError( 'Teklif verilebilecek ilan bulunamadı.' );
                 }
 
-                if ( (int) $lead->post_author === $user_id ) {
+                $lead_company_id = Sektorel_Company_Access::get_content_company_id( $lead );
+                if ( $lead_company_id && $context['company_id'] && (int) $lead_company_id === (int) $context['company_id'] ) {
+                    throw new \GraphQL\Error\UserError( 'Firmanızın kendi ilanına teklif veremezsiniz.' );
+                }
+                if ( ! $lead_company_id && (int) $lead->post_author === $user_id ) {
                     throw new \GraphQL\Error\UserError( 'Kendi ilanınıza teklif veremezsiniz.' );
                 }
 
-                $existing = get_posts( array(
+                $existing_args = array(
                     'post_type'      => 'offer',
                     'post_status'    => 'publish',
-                    'author'         => $user_id,
                     'posts_per_page' => 1,
                     'fields'         => 'ids',
                     'meta_query'     => array(
@@ -107,10 +110,22 @@ class Sektorel_Offers {
                         array( 'key' => 'lead_id', 'value' => (int) $lead->ID, 'type' => 'NUMERIC' ),
                         array( 'key' => 'offer_status', 'value' => array( 'pending', 'accepted' ), 'compare' => 'IN' ),
                     ),
-                ) );
+                );
 
+                if ( $context['company_id'] ) {
+                    $existing_args['meta_query'][] = array(
+                        'key'     => '_sektorel_bidder_company_id',
+                        'value'   => (int) $context['company_id'],
+                        'compare' => '=',
+                        'type'    => 'NUMERIC',
+                    );
+                } else {
+                    $existing_args['author'] = $user_id;
+                }
+
+                $existing = get_posts( $existing_args );
                 if ( ! empty( $existing ) ) {
-                    throw new \GraphQL\Error\UserError( 'Bu ilana daha önce teklif verdiniz.' );
+                    throw new \GraphQL\Error\UserError( 'Bu ilana hesabınız veya firmanız üzerinden daha önce teklif verildi.' );
                 }
 
                 $amount = self::sanitize_amount( $input['amount'] ?? '' );
@@ -146,6 +161,9 @@ class Sektorel_Offers {
                 update_post_meta( $offer_id, 'validity_days', $validity_days );
                 update_post_meta( $offer_id, 'includes_shipping', ! empty( $input['includesShipping'] ) ? 1 : 0 );
                 update_post_meta( $offer_id, 'offer_status', 'pending' );
+                if ( $context['company_id'] ) {
+                    update_post_meta( $offer_id, '_sektorel_bidder_company_id', (int) $context['company_id'] );
+                }
 
                 self::refresh_offer_count( (int) $lead->ID );
 
@@ -168,7 +186,7 @@ class Sektorel_Offers {
                 'offer'   => array( 'type' => 'SektorelOfferItem' ),
             ),
             'mutateAndGetPayload' => function( $input ) {
-                $user_id = self::require_user();
+                $context = self::require_company_owner();
                 $offer_id = (int) ( $input['offerId'] ?? 0 );
                 $offer = get_post( $offer_id );
 
@@ -178,7 +196,7 @@ class Sektorel_Offers {
 
                 $lead_id = (int) get_post_meta( $offer_id, 'lead_id', true );
                 $lead = get_post( $lead_id );
-                if ( ! $lead || (int) $lead->post_author !== $user_id ) {
+                if ( ! $lead || ! Sektorel_Company_Access::can_view_post( $lead, $context ) ) {
                     throw new \GraphQL\Error\UserError( 'Bu teklifi yönetme yetkiniz yok.' );
                 }
 
@@ -202,9 +220,10 @@ class Sektorel_Offers {
         $lead_id = (int) get_post_meta( $offer->ID, 'lead_id', true );
         $lead = get_post( $lead_id );
         $bidder = get_userdata( (int) $offer->post_author );
-        $company_id = class_exists( 'Sektorel_Session_Query' )
-            ? Sektorel_Session_Query::get_owned_company_id( (int) $offer->post_author )
-            : 0;
+        $company_id = (int) get_post_meta( $offer->ID, '_sektorel_bidder_company_id', true );
+        if ( ! $company_id ) {
+            $company_id = Sektorel_Session_Query::get_accessible_company_id( (int) $offer->post_author );
+        }
 
         return array(
             'databaseId'       => (int) $offer->ID,
@@ -224,12 +243,12 @@ class Sektorel_Offers {
         );
     }
 
-    private static function require_user() {
-        $user_id = get_current_user_id();
-        if ( ! $user_id ) {
-            throw new \GraphQL\Error\UserError( 'Bu işlem için giriş yapmanız gerekir.' );
+    private static function require_company_owner() {
+        $context = Sektorel_Company_Access::require_context( false );
+        if ( empty( $context['is_owner'] ) || empty( $context['company_id'] ) ) {
+            throw new \GraphQL\Error\UserError( 'Gelen teklifleri yalnızca firma sahibi yönetebilir.' );
         }
-        return (int) $user_id;
+        return $context;
     }
 
     private static function sanitize_amount( $value ) {

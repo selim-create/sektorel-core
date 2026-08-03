@@ -26,34 +26,34 @@ class Sektorel_Owned_Content {
 
         register_graphql_object_type( 'SektorelOwnedContentDetail', array(
             'fields' => array(
-                'databaseId'          => array( 'type' => 'Int' ),
-                'title'               => array( 'type' => 'String' ),
-                'description'         => array( 'type' => 'String' ),
-                'type'                => array( 'type' => 'String' ),
-                'status'              => array( 'type' => 'String' ),
-                'slug'                => array( 'type' => 'String' ),
-                'sector'              => array( 'type' => 'String' ),
-                'leadType'            => array( 'type' => 'String' ),
-                'budgetString'        => array( 'type' => 'String' ),
-                'expiryDate'          => array( 'type' => 'String' ),
-                'deliveryLocation'    => array( 'type' => 'String' ),
-                'isHiddenName'        => array( 'type' => 'Boolean' ),
-                'companyName'         => array( 'type' => 'String' ),
-                'location'            => array( 'type' => 'String' ),
-                'workType'            => array( 'type' => 'String' ),
-                'experience'          => array( 'type' => 'String' ),
-                'education'           => array( 'type' => 'String' ),
-                'salary'              => array( 'type' => 'String' ),
-                'deadline'            => array( 'type' => 'String' ),
-                'eventType'           => array( 'type' => 'String' ),
-                'startDate'           => array( 'type' => 'String' ),
-                'endDate'             => array( 'type' => 'String' ),
-                'locationType'        => array( 'type' => 'String' ),
-                'venue'               => array( 'type' => 'String' ),
-                'address'             => array( 'type' => 'String' ),
-                'organizer'           => array( 'type' => 'String' ),
-                'price'               => array( 'type' => 'String' ),
-                'registrationLink'    => array( 'type' => 'String' ),
+                'databaseId'       => array( 'type' => 'Int' ),
+                'title'            => array( 'type' => 'String' ),
+                'description'      => array( 'type' => 'String' ),
+                'type'             => array( 'type' => 'String' ),
+                'status'           => array( 'type' => 'String' ),
+                'slug'             => array( 'type' => 'String' ),
+                'sector'           => array( 'type' => 'String' ),
+                'leadType'         => array( 'type' => 'String' ),
+                'budgetString'     => array( 'type' => 'String' ),
+                'expiryDate'       => array( 'type' => 'String' ),
+                'deliveryLocation' => array( 'type' => 'String' ),
+                'isHiddenName'     => array( 'type' => 'Boolean' ),
+                'companyName'      => array( 'type' => 'String' ),
+                'location'         => array( 'type' => 'String' ),
+                'workType'         => array( 'type' => 'String' ),
+                'experience'       => array( 'type' => 'String' ),
+                'education'        => array( 'type' => 'String' ),
+                'salary'           => array( 'type' => 'String' ),
+                'deadline'         => array( 'type' => 'String' ),
+                'eventType'        => array( 'type' => 'String' ),
+                'startDate'        => array( 'type' => 'String' ),
+                'endDate'          => array( 'type' => 'String' ),
+                'locationType'     => array( 'type' => 'String' ),
+                'venue'            => array( 'type' => 'String' ),
+                'address'          => array( 'type' => 'String' ),
+                'organizer'        => array( 'type' => 'String' ),
+                'price'            => array( 'type' => 'String' ),
+                'registrationLink' => array( 'type' => 'String' ),
             ),
         ) );
 
@@ -63,31 +63,14 @@ class Sektorel_Owned_Content {
                 'type' => array( 'type' => 'String' ),
             ),
             'resolve' => function( $root, $args ) {
-                $user_id = self::require_user();
+                $context = Sektorel_Company_Access::require_context( false );
                 $requested = sanitize_key( $args['type'] ?? '' );
                 $post_types = $requested && in_array( $requested, self::$allowed_types, true )
                     ? array( $requested )
                     : self::$allowed_types;
 
-                $posts = get_posts( array(
-                    'post_type'      => $post_types,
-                    'post_status'    => array( 'publish', 'pending', 'draft', 'private' ),
-                    'author'         => $user_id,
-                    'posts_per_page' => 100,
-                    'orderby'        => 'date',
-                    'order'          => 'DESC',
-                ) );
-
-                return array_map( function( $post ) {
-                    return array(
-                        'databaseId' => (int) $post->ID,
-                        'title'      => get_the_title( $post ),
-                        'type'       => $post->post_type,
-                        'status'     => $post->post_status,
-                        'date'       => get_post_time( DATE_ATOM, true, $post ),
-                        'slug'       => $post->post_name,
-                    );
-                }, $posts );
+                $posts = Sektorel_Company_Access::get_accessible_posts( $context['user_id'], $post_types, 100 );
+                return array_map( array( __CLASS__, 'list_payload' ), $posts );
             },
         ) );
 
@@ -97,8 +80,8 @@ class Sektorel_Owned_Content {
                 'databaseId' => array( 'type' => array( 'non_null' => 'Int' ) ),
             ),
             'resolve' => function( $root, $args ) {
-                $user_id = self::require_user();
-                $post = self::get_owned_post( (int) $args['databaseId'], $user_id );
+                $context = Sektorel_Company_Access::require_context( false );
+                $post = self::get_accessible_post( (int) $args['databaseId'], $context, false );
                 return self::detail_payload( $post );
             },
         ) );
@@ -137,8 +120,8 @@ class Sektorel_Owned_Content {
                 'content' => array( 'type' => 'SektorelOwnedContentDetail' ),
             ),
             'mutateAndGetPayload' => function( $input ) {
-                $user_id = self::require_user();
-                $post = self::get_owned_post( (int) $input['databaseId'], $user_id );
+                $context = Sektorel_Company_Access::require_context( true );
+                $post = self::get_accessible_post( (int) $input['databaseId'], $context, true );
 
                 $title = sanitize_text_field( $input['title'] ?? '' );
                 $description = wp_kses_post( $input['description'] ?? '' );
@@ -169,12 +152,13 @@ class Sektorel_Owned_Content {
                 }
 
                 self::assign_sector( $post->ID, $input['sector'] ?? '' );
-                $refreshed = get_post( $post->ID );
+                update_post_meta( $post->ID, '_sektorel_last_edited_by', (int) $context['user_id'] );
+                Sektorel_Company_Access::attach_post_to_context( $post->ID, $context );
 
                 return array(
                     'success' => true,
                     'message' => 'Değişiklikleriniz kaydedildi ve yeniden onaya gönderildi.',
-                    'content' => self::detail_payload( $refreshed ),
+                    'content' => self::detail_payload( get_post( $post->ID ) ),
                 );
             },
         ) );
@@ -188,8 +172,8 @@ class Sektorel_Owned_Content {
                 'message' => array( 'type' => 'String' ),
             ),
             'mutateAndGetPayload' => function( $input ) {
-                $user_id = self::require_user();
-                $post = self::get_owned_post( (int) ( $input['databaseId'] ?? 0 ), $user_id );
+                $context = Sektorel_Company_Access::require_context( true );
+                $post = self::get_accessible_post( (int) ( $input['databaseId'] ?? 0 ), $context, true );
 
                 if ( ! wp_trash_post( $post->ID ) ) {
                     throw new \GraphQL\Error\UserError( 'İçerik çöp kutusuna taşınamadı.' );
@@ -203,25 +187,34 @@ class Sektorel_Owned_Content {
         ) );
     }
 
-    private static function require_user() {
-        $user_id = get_current_user_id();
-        if ( ! $user_id ) {
-            throw new \GraphQL\Error\UserError( 'Bu işlem için giriş yapmanız gerekir.' );
-        }
-        return (int) $user_id;
+    public static function list_payload( $post ) {
+        return array(
+            'databaseId' => (int) $post->ID,
+            'title'      => get_the_title( $post ),
+            'type'       => $post->post_type,
+            'status'     => $post->post_status,
+            'date'       => get_post_time( DATE_ATOM, true, $post ),
+            'slug'       => $post->post_name,
+        );
     }
 
-    private static function get_owned_post( $post_id, $user_id ) {
+    private static function get_accessible_post( $post_id, $context, $write ) {
         $post = get_post( $post_id );
         if ( ! $post || ! in_array( $post->post_type, self::$allowed_types, true ) ) {
             throw new \GraphQL\Error\UserError( 'İçerik bulunamadı.' );
         }
-        if ( (int) $post->post_author !== (int) $user_id ) {
-            throw new \GraphQL\Error\UserError( 'Bu içerik üzerinde işlem yapma yetkiniz yok.' );
-        }
         if ( 'trash' === $post->post_status ) {
             throw new \GraphQL\Error\UserError( 'Çöp kutusundaki içerik düzenlenemez.' );
         }
+
+        $allowed = $write
+            ? Sektorel_Company_Access::can_edit_post( $post, $context )
+            : Sektorel_Company_Access::can_view_post( $post, $context );
+
+        if ( ! $allowed ) {
+            throw new \GraphQL\Error\UserError( 'Bu içerik üzerinde işlem yapma yetkiniz yok.' );
+        }
+
         return $post;
     }
 

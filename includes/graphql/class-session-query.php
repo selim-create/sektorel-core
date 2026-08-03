@@ -96,9 +96,9 @@ class Sektorel_Session_Query {
                     'companyRole' => $company_role,
                     'company'     => $company,
                     'stats'       => array(
-                        'leadCount'  => self::count_owned_posts( $user_id, 'lead' ),
-                        'jobCount'   => self::count_owned_posts( $user_id, 'career' ),
-                        'eventCount' => self::count_owned_posts( $user_id, 'event' ),
+                        'leadCount'  => Sektorel_Company_Access::count_accessible_posts( $user_id, 'lead' ),
+                        'jobCount'   => Sektorel_Company_Access::count_accessible_posts( $user_id, 'career' ),
+                        'eventCount' => Sektorel_Company_Access::count_accessible_posts( $user_id, 'event' ),
                         'viewCount'  => $view_count,
                     ),
                     'recentItems' => self::get_recent_items( $user_id ),
@@ -107,28 +107,12 @@ class Sektorel_Session_Query {
         ) );
     }
 
-    private static function count_owned_posts( $user_id, $post_type ) {
-        $query = new WP_Query( array(
-            'post_type'      => $post_type,
-            'post_status'    => array( 'publish', 'pending', 'draft', 'private' ),
-            'author'         => (int) $user_id,
-            'posts_per_page' => 1,
-            'fields'         => 'ids',
-            'no_found_rows'  => false,
-        ) );
-
-        return (int) $query->found_posts;
-    }
-
     private static function get_recent_items( $user_id ) {
-        $posts = get_posts( array(
-            'post_type'      => array( 'lead', 'career', 'event' ),
-            'post_status'    => array( 'publish', 'pending', 'draft', 'private' ),
-            'author'         => (int) $user_id,
-            'posts_per_page' => 5,
-            'orderby'        => 'date',
-            'order'          => 'DESC',
-        ) );
+        $posts = Sektorel_Company_Access::get_accessible_posts(
+            $user_id,
+            array( 'lead', 'career', 'event' ),
+            5
+        );
 
         return array_map( function( $post ) {
             return array(
