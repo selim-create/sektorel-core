@@ -1,0 +1,40 @@
+name: PHP Syntax
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: php-syntax-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  php-lint:
+    name: PHP syntax check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          coverage: none
+
+      - name: Lint all PHP files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' files < <(find . -type f -name '*.php' -not -path './vendor/*' -print0)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No PHP files found."
+            exit 1
+          fi
+          for file in "${files[@]}"; do
+            php -l "$file"
+          done
