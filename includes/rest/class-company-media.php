@@ -77,33 +77,55 @@ class Sektorel_Company_Media {
         $user_id = get_current_user_id();
         $company_id = Sektorel_Session_Query::get_owned_company_id( $user_id );
 
-        if ( 'gallery' === $type ) {
-            $gallery = self::gallery_urls( $company_id );
-            if ( count( $gallery ) >= self::MAX_GALLERY_ITEMS ) {
-                return new WP_Error( 'sektorel_gallery_limit', 'Galeriye en fazla 12 görsel ekleyebilirsiniz.', array( 'status' => 400 ) );
-            }
+        if ( 'gallery' === $type && count( self::gallery_urls( $company_id ) ) >= self::MAX_GALLERY_ITEMS ) {
+            return new WP_Error( 'sektorel_gallery_limit', 'Galeriye en fazla 12 görsel ekleyebilirsiniz.', array( 'status' => 400 ) );
         }
 
         require_once ABSPATH . 'wp-admin/includes/file.php';
         require_once ABSPATH . 'wp-admin/includes/image.php';
-        require_once ABSPATH . 'wp-admin/includes/media.php';
 
-        $attachment_id = media_handle_upload(
-            'file',
-            $company_id,
-            null,
+        // REST multipart isteklerinde klasik form nonce alanı bulunmaz.
+        $uploaded = wp_handle_upload(
+            $file,
             array(
-                'post_title'  => sanitize_text_field( pathinfo( $file['name'], PATHINFO_FILENAME ) ),
-                'post_status' => 'inherit',
+                'test_form' => false,
+                'mimes'     => $allowed_mimes,
             )
         );
 
-        if ( is_wp_error( $attachment_id ) ) {
+        if ( ! empty( $uploaded['error'] ) ) {
             return new WP_Error(
                 'sektorel_media_upload_failed',
-                'Görsel WordPress medya kütüphanesine kaydedilemedi: ' . $attachment_id->get_error_message(),
+                'Görsel WordPress medya kütüphanesine kaydedilemedi: ' . sanitize_text_field( $uploaded['error'] ),
                 array( 'status' => 500 )
             );
+        }
+
+        $attachment_id = wp_insert_attachment(
+            array(
+                'post_mime_type' => $uploaded['type'],
+                'post_title'     => sanitize_text_field( pathinfo( $file['name'], PATHINFO_FILENAME ) ),
+                'post_content'   => '',
+                'post_status'    => 'inherit',
+                'post_parent'    => $company_id,
+            ),
+            $uploaded['file'],
+            $company_id,
+            true
+        );
+
+        if ( is_wp_error( $attachment_id ) ) {
+            wp_delete_file( $uploaded['file'] );
+            return new WP_Error(
+                'sektorel_attachment_failed',
+                'Görsel medya kaydı oluşturulamadı: ' . $attachment_id->get_error_message(),
+                array( 'status' => 500 )
+            );
+        }
+
+        $metadata = wp_generate_attachment_metadata( $attachment_id, $uploaded['file'] );
+        if ( is_array( $metadata ) ) {
+            wp_update_attachment_metadata( $attachment_id, $metadata );
         }
 
         $url = wp_get_attachment_url( $attachment_id );
@@ -126,6 +148,8 @@ class Sektorel_Company_Media {
             $gallery = array_slice( array_values( array_unique( array_filter( $gallery ) ) ), 0, self::MAX_GALLERY_ITEMS );
             update_post_meta( $company_id, 'gallery_urls', implode( "\n", $gallery ) );
         }
+
+        clean_post_cache( $company_id );
 
         return rest_ensure_response( array(
             'success'      => true,
