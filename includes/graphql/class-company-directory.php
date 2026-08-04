@@ -48,13 +48,13 @@ class Sektorel_Company_Directory {
                 'page'     => array( 'type' => 'Int', 'defaultValue' => 1 ),
                 'first'    => array( 'type' => 'Int', 'defaultValue' => self::DEFAULT_PER_PAGE ),
             ),
-            'resolve'     => function( $root, $args ) {
-                return self::resolve_directory( $args );
+            'resolve'     => function( $root, $args, $context ) {
+                return self::resolve_directory( $args, $context );
             },
         ) );
     }
 
-    private static function resolve_directory( $args ) {
+    private static function resolve_directory( $args, $context ) {
         $search   = sanitize_text_field( $args['search'] ?? '' );
         $sector   = sanitize_title( $args['sector'] ?? '' );
         $location = sanitize_title( $args['location'] ?? '' );
@@ -78,6 +78,7 @@ class Sektorel_Company_Directory {
             'paged'               => $page,
             'ignore_sticky_posts' => true,
             'no_found_rows'       => false,
+            'fields'              => 'ids',
         );
 
         if ( '' !== $search ) {
@@ -168,9 +169,16 @@ class Sektorel_Company_Directory {
 
         $total       = (int) $query->found_posts;
         $total_pages = (int) $query->max_num_pages;
+        $post_loader = $context->get_loader( 'post' );
+        $nodes       = array_map(
+            static function( $post_id ) use ( $post_loader ) {
+                return $post_loader->load_deferred( (int) $post_id );
+            },
+            array_map( 'intval', $query->posts )
+        );
 
         return array(
-            'nodes'           => array_values( $query->posts ),
+            'nodes'           => $nodes,
             'total'           => $total,
             'page'            => $page,
             'perPage'         => $per_page,
