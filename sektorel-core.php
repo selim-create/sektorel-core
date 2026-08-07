@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Sektorel Core
  * Description: Sektörel Ajanda projesi için CPT, Taxonomy ve API tanımlarını içeren çekirdek eklenti.
- * Version: 1.21.0
+ * Version: 1.22.0
  * Author: Sektörel Ajanda Dev Team
  * Text Domain: sektorel-core
  */
@@ -32,6 +32,7 @@ class Sektorel_Core {
         Sektorel_Job_Application_Files::init();
         Sektorel_Job_Application_Access_Fix::init();
         Sektorel_Mail_Observability::init();
+        Sektorel_Event_Reminders::init();
 
         add_action( 'init', array( $this, 'register_post_types' ) );
         add_action( 'init', array( $this, 'register_taxonomies' ) );
@@ -64,6 +65,7 @@ class Sektorel_Core {
         require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-company.php';
         require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-lead.php';
         require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-event.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-event-reminder.php';
         require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-career.php';
         require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-offer.php';
         require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-job-application.php';
@@ -101,12 +103,14 @@ class Sektorel_Core {
         require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-offers.php';
         require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-job-applications.php';
         require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-job-application-access-fix.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-event-reminders.php';
     }
 
     public function register_post_types() {
         Sektorel_Company_CPT::register();
         Sektorel_Lead_CPT::register();
         Sektorel_Event_CPT::register();
+        Sektorel_Event_Reminder_CPT::register();
         Sektorel_Career_CPT::register();
         Sektorel_Offer_CPT::register();
         Sektorel_Job_Application_CPT::register();
