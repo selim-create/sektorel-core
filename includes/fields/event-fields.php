@@ -6,11 +6,19 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Sektorel_Event_Fields {
 
+    const OFFICIAL_CATEGORIES = array(
+        'vergi'            => 'Vergi',
+        'sgk'              => 'SGK',
+        'beyanname'        => 'Beyanname',
+        'tesvik_destek'    => 'Teşvik / Destek',
+        'son_basvuru'      => 'Son Başvuru',
+        'resmi_yukumluluk' => 'Resmî Yükümlülük',
+    );
+
     public static function init() {
         add_action( 'add_meta_boxes', array( __CLASS__, 'add_meta_boxes' ) );
         add_action( 'save_post', array( __CLASS__, 'save_post' ) );
         add_action( 'graphql_register_types', array( __CLASS__, 'register_graphql_fields' ) );
-        // Admin tarafında repeater scripti için footer'a hook atıyoruz
         add_action( 'admin_footer', array( __CLASS__, 'admin_footer_scripts' ) );
     }
 
@@ -28,13 +36,11 @@ class Sektorel_Event_Fields {
     public static function render_metabox( $post ) {
         wp_nonce_field( 'sektorel_event_save', 'sektorel_event_nonce' );
 
-        // Verileri Çek
         $val = function($key) use ($post) {
             return get_post_meta( $post->ID, $key, true );
         };
 
-        // Repeater Verileri (JSON olarak saklayacağız veya serialize edilmiş array)
-        $schedule = get_post_meta( $post->ID, 'schedule', true ); 
+        $schedule = get_post_meta( $post->ID, 'schedule', true );
         if (!is_array($schedule)) $schedule = [];
 
         $speakers = get_post_meta( $post->ID, 'speakers', true );
@@ -43,28 +49,25 @@ class Sektorel_Event_Fields {
         ?>
         <style>
             .sektorel-panel { margin-top: 10px; }
-            .sektorel-section-title { 
-                font-size: 14px; font-weight: 700; border-bottom: 1px solid #ddd; 
-                padding: 15px 0 5px 0; margin: 10px 0 15px 0; color: #2c3338; 
+            .sektorel-section-title {
+                font-size: 14px; font-weight: 700; border-bottom: 1px solid #ddd;
+                padding: 15px 0 5px 0; margin: 10px 0 15px 0; color: #2c3338;
                 text-transform: uppercase; letter-spacing: 0.5px;
             }
             .sektorel-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 15px; }
             .sektorel-field { margin-bottom: 15px; }
             .sektorel-field label { display: block; font-weight: 600; margin-bottom: 5px; color: #444; }
-            .sektorel-field input[type="text"], .sektorel-field input[type="url"], 
-            .sektorel-field input[type="datetime-local"], .sektorel-field select, 
+            .sektorel-field input[type="text"], .sektorel-field input[type="url"],
+            .sektorel-field input[type="datetime-local"], .sektorel-field select,
             .sektorel-field textarea { width: 100%; }
-            
-            /* Repeater Styles */
             .sektorel-repeater-item { border: 1px solid #e5e5e5; background: #f9f9f9; padding: 10px; margin-bottom: 10px; display: flex; gap: 10px; align-items: flex-end; }
             .sektorel-repeater-item input { margin-bottom: 0 !important; }
             .sektorel-repeater-btn { cursor: pointer; color: #d63638; font-weight: bold; padding: 5px; }
             .sektorel-add-btn { background: #f0f0f1; border: 1px solid #8c8f94; color: #2271b1; cursor: pointer; padding: 5px 10px; border-radius: 3px; font-weight: 600; }
+            .sektorel-official-fields { margin: 5px 0 20px; padding: 16px; border-left: 4px solid #d63638; background: #fff7f7; }
         </style>
 
         <div class="sektorel-panel">
-            
-            <!-- Genel -->
             <div class="sektorel-row">
                 <div class="sektorel-field">
                     <label for="is_official">
@@ -84,7 +87,29 @@ class Sektorel_Event_Fields {
                 </div>
             </div>
 
-            <!-- Zaman -->
+            <div class="sektorel-official-fields" id="sektorel-official-fields">
+                <div class="sektorel-section-title">Resmî / Mali Takvim Bilgileri</div>
+                <div class="sektorel-row">
+                    <div class="sektorel-field">
+                        <label for="official_category">Kategori</label>
+                        <select id="official_category" name="official_category">
+                            <option value="">Kategori seçin</option>
+                            <?php foreach ( self::OFFICIAL_CATEGORIES as $category_key => $category_label ) : ?>
+                                <option value="<?php echo esc_attr( $category_key ); ?>" <?php selected( $val('official_category'), $category_key ); ?>><?php echo esc_html( $category_label ); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="sektorel-field">
+                        <label for="official_institution">İlgili Kurum</label>
+                        <input type="text" id="official_institution" name="official_institution" value="<?php echo esc_attr($val('official_institution')); ?>" placeholder="Örn: GİB, SGK, KOSGEB" />
+                    </div>
+                </div>
+                <div class="sektorel-field">
+                    <label for="official_source_url">Resmî Kaynak URL</label>
+                    <input type="url" id="official_source_url" name="official_source_url" value="<?php echo esc_attr($val('official_source_url')); ?>" placeholder="https://..." />
+                </div>
+            </div>
+
             <div class="sektorel-section-title">Zaman ve Yer</div>
             <div class="sektorel-row">
                 <div class="sektorel-field">
@@ -118,7 +143,6 @@ class Sektorel_Event_Fields {
                 </div>
             </div>
 
-            <!-- Kayıt & Organizasyon -->
             <div class="sektorel-section-title">Kayıt ve Organizasyon</div>
             <div class="sektorel-row">
                 <div class="sektorel-field">
@@ -135,7 +159,6 @@ class Sektorel_Event_Fields {
                 <input type="url" name="registration_link" value="<?php echo esc_attr($val('registration_link')); ?>" />
             </div>
 
-            <!-- Program Akışı (Repeater) -->
             <div class="sektorel-section-title">Program Akışı</div>
             <div id="schedule-container">
                 <?php if (!empty($schedule)) : foreach ($schedule as $i => $item) : ?>
@@ -154,7 +177,6 @@ class Sektorel_Event_Fields {
             </div>
             <button type="button" class="sektorel-add-btn" id="add-schedule">+ Akış Ekle</button>
 
-            <!-- Konuşmacılar (Repeater) -->
             <div class="sektorel-section-title">Konuşmacılar</div>
             <div id="speakers-container">
                 <?php if (!empty($speakers)) : foreach ($speakers as $i => $item) : ?>
@@ -180,19 +202,23 @@ class Sektorel_Event_Fields {
                 <?php endforeach; endif; ?>
             </div>
             <button type="button" class="sektorel-add-btn" id="add-speaker">+ Konuşmacı Ekle</button>
-
         </div>
         <?php
     }
 
-    // Admin panelinde repeater'ların çalışması için basit JS
     public static function admin_footer_scripts() {
         global $post;
         if ( ! $post || 'event' !== $post->post_type ) return;
         ?>
         <script>
         jQuery(document).ready(function($){
-            // Akış Ekleme
+            function toggleOfficialFields() {
+                $('#sektorel-official-fields').toggle($('#is_official').is(':checked'));
+            }
+
+            toggleOfficialFields();
+            $('#is_official').on('change', toggleOfficialFields);
+
             $('#add-schedule').click(function(){
                 var count = $('#schedule-container .sektorel-repeater-item').length;
                 var html = `
@@ -204,7 +230,6 @@ class Sektorel_Event_Fields {
                 $('#schedule-container').append(html);
             });
 
-            // Konuşmacı Ekleme
             $('#add-speaker').click(function(){
                 var count = $('#speakers-container .sektorel-repeater-item').length;
                 var html = `
@@ -218,7 +243,6 @@ class Sektorel_Event_Fields {
                 $('#speakers-container').append(html);
             });
 
-            // Silme
             $(document).on('click', '.remove-row', function(){
                 $(this).closest('.sektorel-repeater-item').remove();
             });
@@ -234,20 +258,32 @@ class Sektorel_Event_Fields {
         if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) return;
         if ( ! current_user_can( 'edit_post', $post_id ) ) return;
 
-        // Basit Alanlar
         $fields = ['event_type', 'start_date', 'end_date', 'location_type', 'venue', 'address', 'organizer', 'price', 'registration_link'];
         foreach ($fields as $field) {
             if (isset($_POST[$field])) update_post_meta($post_id, $field, sanitize_text_field($_POST[$field]));
         }
 
-        // Checkbox
         $is_official = isset($_POST['is_official']) ? 1 : 0;
         update_post_meta($post_id, 'is_official', $is_official);
 
-        // Repeater Alanları (Array olarak kaydet)
+        if ( $is_official ) {
+            $category = isset($_POST['official_category']) ? sanitize_key($_POST['official_category']) : '';
+            if ( ! array_key_exists( $category, self::OFFICIAL_CATEGORIES ) ) {
+                $category = '';
+            }
+
+            update_post_meta($post_id, 'event_type', 'resmi');
+            update_post_meta($post_id, 'official_category', $category);
+            update_post_meta($post_id, 'official_institution', isset($_POST['official_institution']) ? sanitize_text_field($_POST['official_institution']) : '');
+            update_post_meta($post_id, 'official_source_url', isset($_POST['official_source_url']) ? esc_url_raw($_POST['official_source_url']) : '');
+        } else {
+            delete_post_meta($post_id, 'official_category');
+            delete_post_meta($post_id, 'official_institution');
+            delete_post_meta($post_id, 'official_source_url');
+        }
+
         if (isset($_POST['schedule']) && is_array($_POST['schedule'])) {
-            $schedule = array_values($_POST['schedule']); // Indexleri sıfırla
-            // Basit sanitization (array_map deep gerekebilir, şimdilik basit döngü)
+            $schedule = array_values($_POST['schedule']);
             $clean_schedule = [];
             foreach($schedule as $item) {
                 if(!empty($item['title'])) $clean_schedule[] = array_map('sanitize_text_field', $item);
@@ -270,30 +306,29 @@ class Sektorel_Event_Fields {
     }
 
     public static function register_graphql_fields() {
-        
-        // Ana Etkinlik Alanları
         register_graphql_field( 'Event', 'eventDetails', array(
             'type' => 'EventDetails',
             'resolve' => function( $post ) {
                 return array(
-                    'isOfficial'       => get_post_meta( $post->ID, 'is_official', true ) === '1',
-                    'eventType'        => get_post_meta( $post->ID, 'event_type', true ),
-                    'startDate'        => get_post_meta( $post->ID, 'start_date', true ),
-                    'endDate'          => get_post_meta( $post->ID, 'end_date', true ),
-                    'locationType'     => get_post_meta( $post->ID, 'location_type', true ),
-                    'venue'            => get_post_meta( $post->ID, 'venue', true ),
-                    'address'          => get_post_meta( $post->ID, 'address', true ),
-                    'organizer'        => get_post_meta( $post->ID, 'organizer', true ),
-                    'price'            => get_post_meta( $post->ID, 'price', true ),
-                    'registrationLink' => get_post_meta( $post->ID, 'registration_link', true ),
-                    // Repeaterlar
-                    'schedule'         => get_post_meta( $post->ID, 'schedule', true ) ?: [],
-                    'speakers'         => get_post_meta( $post->ID, 'speakers', true ) ?: [],
+                    'isOfficial'          => get_post_meta( $post->ID, 'is_official', true ) === '1',
+                    'eventType'           => get_post_meta( $post->ID, 'event_type', true ),
+                    'startDate'           => get_post_meta( $post->ID, 'start_date', true ),
+                    'endDate'             => get_post_meta( $post->ID, 'end_date', true ),
+                    'locationType'        => get_post_meta( $post->ID, 'location_type', true ),
+                    'venue'               => get_post_meta( $post->ID, 'venue', true ),
+                    'address'             => get_post_meta( $post->ID, 'address', true ),
+                    'organizer'           => get_post_meta( $post->ID, 'organizer', true ),
+                    'price'               => get_post_meta( $post->ID, 'price', true ),
+                    'registrationLink'    => get_post_meta( $post->ID, 'registration_link', true ),
+                    'officialCategory'    => get_post_meta( $post->ID, 'official_category', true ),
+                    'officialInstitution' => get_post_meta( $post->ID, 'official_institution', true ),
+                    'officialSourceUrl'   => get_post_meta( $post->ID, 'official_source_url', true ),
+                    'schedule'            => get_post_meta( $post->ID, 'schedule', true ) ?: [],
+                    'speakers'            => get_post_meta( $post->ID, 'speakers', true ) ?: [],
                 );
             }
         ));
 
-        // Alt Tipler (Repeater İçin)
         register_graphql_object_type( 'EventScheduleItem', array(
             'fields' => array(
                 'time'  => array( 'type' => 'String' ),
@@ -310,21 +345,23 @@ class Sektorel_Event_Fields {
             )
         ));
 
-        // Ana EventDetails Tipi
         register_graphql_object_type( 'EventDetails', array(
             'fields' => array(
-                'isOfficial'       => array( 'type' => 'Boolean' ),
-                'eventType'        => array( 'type' => 'String' ),
-                'startDate'        => array( 'type' => 'String' ),
-                'endDate'          => array( 'type' => 'String' ),
-                'locationType'     => array( 'type' => 'String' ),
-                'venue'            => array( 'type' => 'String' ),
-                'address'          => array( 'type' => 'String' ),
-                'organizer'        => array( 'type' => 'String' ),
-                'price'            => array( 'type' => 'String' ),
-                'registrationLink' => array( 'type' => 'String' ),
-                'schedule'         => array( 'type' => ['list_of' => 'EventScheduleItem'] ),
-                'speakers'         => array( 'type' => ['list_of' => 'EventSpeakerItem'] ),
+                'isOfficial'          => array( 'type' => 'Boolean' ),
+                'eventType'           => array( 'type' => 'String' ),
+                'startDate'           => array( 'type' => 'String' ),
+                'endDate'             => array( 'type' => 'String' ),
+                'locationType'        => array( 'type' => 'String' ),
+                'venue'               => array( 'type' => 'String' ),
+                'address'             => array( 'type' => 'String' ),
+                'organizer'           => array( 'type' => 'String' ),
+                'price'               => array( 'type' => 'String' ),
+                'registrationLink'    => array( 'type' => 'String' ),
+                'officialCategory'    => array( 'type' => 'String' ),
+                'officialInstitution' => array( 'type' => 'String' ),
+                'officialSourceUrl'   => array( 'type' => 'String' ),
+                'schedule'            => array( 'type' => ['list_of' => 'EventScheduleItem'] ),
+                'speakers'            => array( 'type' => ['list_of' => 'EventSpeakerItem'] ),
             ),
         ));
     }
