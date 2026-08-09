@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Sektorel Core
  * Description: Sektörel Ajanda projesi için CPT, Taxonomy ve API tanımlarını içeren çekirdek eklenti.
- * Version: 1.25.1
+ * Version: 1.26.0
  * Author: Sektörel Ajanda Dev Team
  * Text Domain: sektorel-core
  */
@@ -45,6 +45,7 @@ class Sektorel_Core {
             Sektorel_Event_Source_Import_Header_Fix::init();
             Sektorel_Event_Source_Checker::init();
             Sektorel_Event_Source_Health::init();
+            Sektorel_Event_Candidate_JSONLD::init();
         }
 
         Sektorel_Company_Mutations::init();
@@ -72,6 +73,7 @@ class Sektorel_Core {
         require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-event.php';
         require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-event-reminder.php';
         require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-event-source.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-event-candidate.php';
         require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-career.php';
         require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-offer.php';
         require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-job-application.php';
@@ -92,6 +94,7 @@ class Sektorel_Core {
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-import-header-fix.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-checker.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-health.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-jsonld.php';
         require_once SEKTOREL_CORE_PATH . 'includes/mail/class-mail-observability.php';
         require_once SEKTOREL_CORE_PATH . 'includes/auth/class-token-service.php';
         require_once SEKTOREL_CORE_PATH . 'includes/rest/class-company-media.php';
@@ -123,6 +126,7 @@ class Sektorel_Core {
         Sektorel_Event_CPT::register();
         Sektorel_Event_Reminder_CPT::register();
         Sektorel_Event_Source_CPT::register();
+        Sektorel_Event_Candidate_CPT::register();
         Sektorel_Career_CPT::register();
         Sektorel_Offer_CPT::register();
         Sektorel_Job_Application_CPT::register();
