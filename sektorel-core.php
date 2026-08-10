@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Sektorel Core
  * Description: Sektörel Ajanda projesi için CPT, Taxonomy ve API tanımlarını içeren çekirdek eklenti.
- * Version: 1.28.2
+ * Version: 1.29.0
  * Author: Sektörel Ajanda Dev Team
  * Text Domain: sektorel-core
  */
@@ -45,6 +45,7 @@ class Sektorel_Core {
             Sektorel_Event_Source_Import_Header_Fix::init();
             Sektorel_Event_Source_Checker::init();
             Sektorel_Event_Source_Health::init();
+            Sektorel_Event_Source_Target_Discovery::init();
             Sektorel_Event_Candidate_JSONLD::init();
             Sektorel_Event_Candidate_HTML::init();
             Sektorel_Event_Candidate_URL_Fix::init();
@@ -101,6 +102,7 @@ class Sektorel_Core {
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-import-header-fix.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-checker.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-health.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-target-discovery.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-jsonld.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-html.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-url-fix.php';
