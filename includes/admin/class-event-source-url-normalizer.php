@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Sektorel_Event_Source_URL_Normalizer {
 
-    const VERSION = '1333';
+    const VERSION = '1334';
 
     public static function init() {
         add_action( 'wp_ajax_sektorel_prepare_html_event_scan', array( __CLASS__, 'normalize_active_sources' ), 1 );
@@ -95,17 +95,19 @@ class Sektorel_Event_Source_URL_Normalizer {
             return;
         }
 
-        $title = self::normalize_title( get_the_title( $source_id ) );
-        $url   = trim( (string) get_post_meta( $source_id, 'source_url', true ) );
-        $host  = self::host( $url );
+        $title  = self::normalize_title( get_the_title( $source_id ) );
+        $url    = trim( (string) get_post_meta( $source_id, 'source_url', true ) );
+        $host   = self::host( $url );
         $target = '';
         $reason = '';
 
-        // The root ankiros.com DNS result is rejected by the checker while the
-        // current official fair website is served from the www hostname.
+        // Some production DNS resolvers classify the ANKIROS site host as an
+        // unsafe/private target. The organizer's public Hannover Fairs Turkey
+        // listing carries the same official event identity and 2026 dates, so
+        // use that public listing rather than weakening SSRF protection.
         if ( 'ankiros demir celik ve metalurji fuari' === $title && self::is_ankiros_host( $host ) ) {
-            $target = 'https://www.ankiros.com/';
-            $reason = 'ankiros_official_www';
+            $target = 'https://www.hannoverfairsturkey.com/tr/fuarlar/ankiros';
+            $reason = 'ankiros_public_organizer_listing';
         }
 
         // The World Foundry Congress is a separate event and should no longer
@@ -130,7 +132,6 @@ class Sektorel_Event_Source_URL_Normalizer {
         update_post_meta( $source_id, 'source_canonical_repair_reason', sanitize_key( $reason ) );
         update_post_meta( $source_id, 'source_canonical_repaired_at', current_time( 'mysql' ) );
 
-        // Previous health/parser results belong to the old target.
         foreach ( array(
             'check_state', 'detected_parser', 'last_http_status', 'last_content_type',
             'last_final_url', 'last_result', 'last_error', 'last_candidate_scan_at',
