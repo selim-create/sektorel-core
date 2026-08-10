@@ -17,8 +17,10 @@ class Sektorel_Event_HTML_Safe_Queue {
         // Run before the older confidence prepare callback at priority 5.
         add_action( 'wp_ajax_sektorel_prepare_html_event_scan', array( __CLASS__, 'prepare_scan' ), 4 );
 
-        // Replace only the HTML scan page callback. The legacy batch worker is
-        // intentionally kept as the single parser implementation.
+        // The legacy HTML class registers the same submenu slug at priority 41.
+        // Remove that registration before admin_menu fires so only the safe
+        // queue renderer below is attached to the page hook.
+        remove_action( 'admin_menu', array( 'Sektorel_Event_Candidate_HTML', 'add_admin_menu' ), 41 );
         add_action( 'admin_menu', array( __CLASS__, 'replace_scan_page' ), 42 );
     }
 
@@ -84,8 +86,6 @@ class Sektorel_Event_HTML_Safe_Queue {
     }
 
     public static function replace_scan_page() {
-        remove_submenu_page( 'edit.php?post_type=event', 'sektorel-html-events' );
-
         add_submenu_page(
             'edit.php?post_type=event',
             'HTML Etkinliklerini Tara',
