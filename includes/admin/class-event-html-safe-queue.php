@@ -17,10 +17,9 @@ class Sektorel_Event_HTML_Safe_Queue {
         // Run before the older confidence prepare callback at priority 5.
         add_action( 'wp_ajax_sektorel_prepare_html_event_scan', array( __CLASS__, 'prepare_scan' ), 4 );
 
-        // The legacy HTML class registers the same submenu slug at priority 41.
-        // Remove that registration before admin_menu fires so only the safe
-        // queue renderer below is attached to the page hook.
-        remove_action( 'admin_menu', array( 'Sektorel_Event_Candidate_HTML', 'add_admin_menu' ), 41 );
+        // The legacy HTML class registers its submenu at priority 41. Replace
+        // that page only after registration has actually happened, so there is
+        // exactly one submenu row and one page-render callback.
         add_action( 'admin_menu', array( __CLASS__, 'replace_scan_page' ), 42 );
     }
 
@@ -86,12 +85,28 @@ class Sektorel_Event_HTML_Safe_Queue {
     }
 
     public static function replace_scan_page() {
+        $parent = 'edit.php?post_type=event';
+        $slug   = 'sektorel-html-events';
+
+        // At priority 42 the legacy submenu/page hook already exists. Remove
+        // both the menu row and every renderer attached to that exact page
+        // hook, then register the canonical safe renderer once.
+        $legacy_hook = function_exists( 'get_plugin_page_hookname' )
+            ? get_plugin_page_hookname( $slug, $parent )
+            : '';
+
+        if ( $legacy_hook ) {
+            remove_all_actions( $legacy_hook );
+        }
+
+        remove_submenu_page( $parent, $slug );
+
         add_submenu_page(
-            'edit.php?post_type=event',
+            $parent,
             'HTML Etkinliklerini Tara',
             'HTML Tara',
             'manage_options',
-            'sektorel-html-events',
+            $slug,
             array( __CLASS__, 'render_scan_page' )
         );
     }
@@ -106,7 +121,6 @@ class Sektorel_Event_HTML_Safe_Queue {
         ?>
         <div class="wrap">
             <h1>HTML Etkinliklerini Tara</h1>
-            <div class="notice notice-info inline"><p><strong>Güvenli HTML kuyruğu aktif.</strong> Resmî kurum ana sayfaları tarama dışında bırakılır; yalnız doğrulanmış/list-like resmî hedefler ve etkinlik odaklı diğer HTML kaynakları kuyruğa alınır.</p></div>
             <p>Erişilebilir HTML kaynaklarından etkinlik adaylarını generic kurallarla keşfeder. Bulunan kayıtlar yalnızca Aday Etkinlikler havuzuna yazılır; otomatik yayın yapılmaz.</p>
             <div class="card" style="max-width:900px;padding:22px;">
                 <p><strong><?php echo esc_html( count( $ids ) ); ?></strong> güvenli HTML kaynağı taramaya hazır.</p>
