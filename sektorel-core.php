@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Sektorel Core
  * Description: Sektörel Ajanda projesi için CPT, Taxonomy ve API tanımlarını içeren çekirdek eklenti.
- * Version: 1.35.0
+ * Version: 1.35.1
  * Author: Sektörel Ajanda Dev Team
  * Text Domain: sektorel-core
  */
@@ -63,6 +63,7 @@ class Sektorel_Core {
             Sektorel_Event_HTML_Unresolved_Review::init();
             Sektorel_Event_HTML_Review_Hygiene::init();
             Sektorel_Event_HTML_Review_Safety::init();
+            Sektorel_Event_HTML_Review_Triage::init();
             Sektorel_Event_Candidate_Post_Hardening::init();
             Sektorel_Event_Candidate_Listing_Guard::init();
             Sektorel_Event_Candidate_Retro_Cleanup::init();
@@ -139,6 +140,7 @@ class Sektorel_Core {
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-html-unresolved-review.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-html-review-hygiene.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-html-review-safety.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-html-review-triage.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-post-hardening.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-listing-guard.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-retro-cleanup.php';
