@@ -38,3 +38,32 @@ jobs:
           for file in "${files[@]}"; do
             php -l "$file"
           done
+
+      - name: Verify Core require paths
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          missing=0
+          while IFS= read -r path; do
+            [ -z "$path" ] && continue
+            if [ ! -f "$path" ]; then
+              echo "Missing required file: $path"
+              missing=1
+            fi
+          done < <(
+            php -r '
+              $source = file_get_contents("sektorel-core.php");
+              preg_match_all("/require_once\\s+SEKTOREL_CORE_PATH\\s*\\.\\s*[\x27\x22]([^\x27\x22]+)[\x27\x22]\\s*;/", $source, $matches);
+              foreach ($matches[1] as $path) {
+                  echo $path, PHP_EOL;
+              }
+            '
+          )
+
+          if [ "$missing" -ne 0 ]; then
+            echo "One or more static Core require paths do not exist."
+            exit 1
+          fi
+
+          echo "All static Core require paths exist."
