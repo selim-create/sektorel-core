@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Sektorel Core
  * Description: Sektörel Ajanda projesi için CPT, Taxonomy ve API tanımlarını içeren çekirdek eklenti.
- * Version: 1.36.1
+ * Version: 1.36.2
  * Author: Sektörel Ajanda Dev Team
  * Text Domain: sektorel-core
  */
@@ -42,6 +42,7 @@ class Sektorel_Core {
             Sektorel_Demo_Importer::init();
             Sektorel_Event_Source_Admin::init();
             Sektorel_Event_Source_Role::init();
+            Sektorel_Event_Source_TOBB::init();
             Sektorel_Event_Source_Importer_Fixed::init();
             Sektorel_Event_Source_Import_Header_Fix::init();
             Sektorel_Event_Source_URL_Normalizer::init();
@@ -124,6 +125,7 @@ class Sektorel_Core {
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-demo-importer.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-admin.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-role.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-tobb.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-importer-fixed.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-import-header-fix.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-url-normalizer.php';
@@ -138,7 +140,7 @@ class Sektorel_Core {
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-filter-safety.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-html-container-filter.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-html-stale-filter.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-html-time-proximity.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-html-time-proximity.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-html.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-html-scan-observability.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-html-new-candidate-panel.php';
