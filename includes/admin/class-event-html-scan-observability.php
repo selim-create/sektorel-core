@@ -6,16 +6,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /**
  * Reports meaningful HTML candidate changes without changing parser behavior.
- *
- * The legacy HTML parser historically reports every existing fingerprint as
- * "updated", even when the stored event payload is identical. This wrapper
- * keeps the legacy scanner as the source of truth, but snapshots parser-owned
- * candidate fields before/after each source scan and splits those legacy
- * updates into real "updated" and "unchanged" counts.
+ * Also exposes concrete diagnostics for candidates created by each scan.
  */
 class Sektorel_Event_HTML_Scan_Observability {
 
-    const ENGINE_VERSION = '1346';
+    const ENGINE_VERSION = '1347';
 
     private static $payload_keys = array(
         'source_url',
@@ -31,8 +26,6 @@ class Sektorel_Event_HTML_Scan_Observability {
     );
 
     public static function init() {
-        // All plugin init() calls have completed by admin_init, so the legacy
-        // AJAX callback definitely exists and can be replaced deterministically.
         add_action( 'admin_init', array( __CLASS__, 'replace_batch_handler' ), 99 );
     }
 
@@ -70,6 +63,7 @@ class Sektorel_Event_HTML_Scan_Observability {
         $skipped   = 0;
         $error     = 0;
         $messages  = array();
+        $new_ids   = array();
 
         foreach ( array_slice( $ids, $offset, Sektorel_Event_Candidate_HTML::BATCH_SIZE ) as $source_id ) {
             $source_id = absint( $source_id );
@@ -94,6 +88,12 @@ class Sektorel_Event_HTML_Scan_Observability {
             );
             $same_payload = max( 0, $legacy_updated - $meaningful_updates );
 
+            $created_ids = array_values( array_diff( array_keys( $after ), array_keys( $before ) ) );
+            if ( $legacy_created && count( $created_ids ) > $legacy_created ) {
+                $created_ids = array_slice( $created_ids, -$legacy_created );
+            }
+            $new_ids = array_merge( $new_ids, array_map( 'absint', $created_ids ) );
+
             $created   += $legacy_created;
             $updated   += $meaningful_updates;
             $unchanged += $same_payload;
@@ -107,6 +107,14 @@ class Sektorel_Event_HTML_Scan_Observability {
                 $same_payload,
                 $legacy_skipped
             );
+
+            foreach ( $created_ids as $candidate_id ) {
+                $messages[] = self::new_candidate_message( absint( $candidate_id ) );
+            }
+        }
+
+        if ( $new_ids ) {
+            self::remember_recent_new_ids( $new_ids );
         }
 
         $total = count( $ids );
@@ -118,16 +126,43 @@ class Sektorel_Event_HTML_Scan_Observability {
         }
 
         wp_send_json_success( array(
-            'created'        => $created,
-            'updated'        => $updated,
-            'unchanged'      => $unchanged,
-            'skipped'        => $skipped,
-            'error'          => $error,
-            'messages'       => $messages,
-            'next_offset'    => $next,
-            'done'           => $done,
-            'metrics_version'=> self::ENGINE_VERSION,
+            'created'         => $created,
+            'updated'         => $updated,
+            'unchanged'       => $unchanged,
+            'skipped'         => $skipped,
+            'error'           => $error,
+            'messages'        => $messages,
+            'new_candidate_ids'=> array_values( array_unique( array_map( 'absint', $new_ids ) ) ),
+            'next_offset'     => $next,
+            'done'            => $done,
+            'metrics_version' => self::ENGINE_VERSION,
         ) );
+    }
+
+    public static function recent_new_ids() {
+        $ids = get_transient( self::recent_key() );
+        return is_array( $ids ) ? array_values( array_unique( array_map( 'absint', $ids ) ) ) : array();
+    }
+
+    private static function remember_recent_new_ids( $ids ) {
+        $stored = self::recent_new_ids();
+        $stored = array_values( array_unique( array_merge( $stored, array_map( 'absint', $ids ) ) ) );
+        set_transient( self::recent_key(), array_slice( $stored, -50 ), 12 * HOUR_IN_SECONDS );
+    }
+
+    private static function new_candidate_message( $candidate_id ) {
+        $event_url = (string) get_post_meta( $candidate_id, 'event_url', true );
+        $start     = (string) get_post_meta( $candidate_id, 'start_date', true );
+        $status    = (string) get_post_meta( $candidate_id, 'candidate_status', true );
+
+        return sprintf(
+            '  ↳ Yeni aday #%1$d — %2$s | %3$s | durum: %4$s | %5$s',
+            $candidate_id,
+            get_the_title( $candidate_id ),
+            $start ? $start : 'tarih yok',
+            $status ? $status : 'new',
+            $event_url ? $event_url : 'event URL yok'
+        );
     }
 
     private static function scan_source( $source_id ) {
@@ -205,5 +240,9 @@ class Sektorel_Event_HTML_Scan_Observability {
 
     private static function queue_key( $user_id, $token ) {
         return 'sektorel_html_' . absint( $user_id ) . '_' . sanitize_key( $token );
+    }
+
+    private static function recent_key() {
+        return 'sektorel_html_recent_new_' . absint( get_current_user_id() );
     }
 }
