@@ -112,7 +112,7 @@ class Sektorel_Event_Candidate_Quality {
         echo '<div class="notice notice-success is-dismissible"><p>';
         echo 'Toplu dönüşüm tamamlandı. Yeni taslak: <strong>' . esc_html( (string) $converted ) . '</strong>, ';
         echo 'zaten dönüştürülmüş: <strong>' . esc_html( (string) $existing ) . '</strong>, ';
-        echo 'hata: <strong>' . esc_html( (string) $failed ) . '</strong>.';
+        echo 'hata/engellenen: <strong>' . esc_html( (string) $failed ) . '</strong>.';
         echo '</p></div>';
     }
 
@@ -245,6 +245,13 @@ class Sektorel_Event_Candidate_Quality {
         $existing_event_id = (int) get_post_meta( $candidate_id, 'imported_event_id', true );
         if ( $existing_event_id && 'event' === get_post_type( $existing_event_id ) ) {
             return 'existing';
+        }
+
+        if ( class_exists( 'Sektorel_Event_Source_Role' ) ) {
+            $role_guard = Sektorel_Event_Source_Role::candidate_creation_guard( $candidate_id );
+            if ( is_wp_error( $role_guard ) ) {
+                return $role_guard;
+            }
         }
 
         $title = self::clean_text( get_the_title( $candidate_id ) );
