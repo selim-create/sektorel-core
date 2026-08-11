@@ -44,6 +44,7 @@ class Sektorel_Event_Candidate_Filter_Safety {
             'candidate_match_status',
             'candidate_parser',
             'candidate_quality',
+            'candidate_triage',
             's',
             'm',
         );
