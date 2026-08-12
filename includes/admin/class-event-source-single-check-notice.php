@@ -141,3 +141,6 @@ Sektorel_Event_Candidate_Manual_Match::init();
 
 require_once __DIR__ . '/class-event-candidate-background-matcher.php';
 Sektorel_Event_Candidate_Background_Matcher::init();
+
+require_once __DIR__ . '/class-event-safe-discovery-draft-stage.php';
+Sektorel_Event_Safe_Discovery_Draft_Stage::init();
