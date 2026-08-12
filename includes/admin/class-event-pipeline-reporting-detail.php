@@ -115,7 +115,8 @@ class Sektorel_Event_Pipeline_Reporting_Detail {
                 }).done(function(response){
                     if(!response || !response.success || !response.data){ return; }
                     var d=response.data;
-                    var original=$row.find('.ssc-result').text() || '';
+                    var $result=$row.find('.ssc-result');
+                    var original=$result.text() || '';
                     var match=original.match(/Kayıt:\s*\d+/);
                     var parts=[];
                     if(match){ parts.push(match[0]); }
@@ -124,7 +125,10 @@ class Sektorel_Event_Pipeline_Reporting_Detail {
                     if(Number(d.incomplete||0)){ parts.push('Eksik: '+Number(d.incomplete||0)); }
                     if(Number(d.changed||0)){ parts.push('Değişti: '+Number(d.changed||0)); }
                     if(Number(d.other||0)){ parts.push('Diğer: '+Number(d.other||0)); }
-                    $row.find('.ssc-result').text(parts.join(' · '));
+                    var nextText=parts.join(' · ');
+                    if(nextText !== original){
+                        $result.text(nextText);
+                    }
                 });
             }
 
