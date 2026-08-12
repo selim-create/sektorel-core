@@ -67,8 +67,6 @@ class Sektorel_Event_Source_Single_Check_Notice {
 
         $source_id = isset( $_GET['sektorel_source_id'] ) ? absint( $_GET['sektorel_source_id'] ) : 0;
         if ( ! $source_id || 'event_source' !== get_post_type( $source_id ) ) {
-            // Preserve backward compatibility for redirects generated before
-            // this UX layer was installed.
             self::notice( 'info', 'Kaynak kontrolü tamamlandı. Sonuç için Kontrol sütununu inceleyebilirsiniz.' );
             return;
         }
@@ -109,3 +107,7 @@ class Sektorel_Event_Source_Single_Check_Notice {
         echo '<div class="notice notice-' . esc_attr( $type ) . ' is-dismissible"><p>' . wp_kses( $message, array( 'strong' => array() ) ) . '</p></div>';
     }
 }
+
+// Keep Source Center run reporting isolated from the operational orchestrator.
+require_once __DIR__ . '/class-event-source-center-reporting.php';
+Sektorel_Event_Source_Center_Reporting::init();
