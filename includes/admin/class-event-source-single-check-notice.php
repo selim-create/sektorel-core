@@ -132,3 +132,8 @@ Sektorel_Event_Source_IFM::init();
 // ticks so canonical candidates can become draft events before enrichment.
 require_once __DIR__ . '/class-event-canonical-draft-stage.php';
 Sektorel_Event_Canonical_Draft_Stage::init();
+
+// Candidate records stay in storage for provenance, but the daily admin UI
+// should behave like a review inbox rather than a historical candidate dump.
+require_once __DIR__ . '/class-event-candidate-inbox.php';
+Sektorel_Event_Candidate_Inbox::init();
