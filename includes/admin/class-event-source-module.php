@@ -22,6 +22,9 @@ class Sektorel_Event_Source_Module {
 
         self::$initialized = true;
 
+        require_once __DIR__ . '/class-event-source-stage-registry.php';
+        Sektorel_Event_Source_Stage_Registry::init();
+
         require_once __DIR__ . '/class-event-source-center-reporting.php';
         Sektorel_Event_Source_Center_Reporting::init();
 
