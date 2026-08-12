@@ -143,3 +143,8 @@ Sektorel_Event_Canonical_Draft_Stage::init();
 // should behave like a review inbox rather than a historical candidate dump.
 require_once __DIR__ . '/class-event-candidate-inbox.php';
 Sektorel_Event_Candidate_Inbox::init();
+
+// Enrichment-only candidates must not expose the legacy "Etkinliğe Ekle"
+// action because source-role policy intentionally forbids creating a new Event.
+require_once __DIR__ . '/class-event-candidate-enrichment-actions.php';
+Sektorel_Event_Candidate_Enrichment_Actions::init();
