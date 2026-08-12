@@ -108,9 +108,6 @@ class Sektorel_Event_Source_Single_Check_Notice {
     }
 }
 
-// Keep Source Center reporting / background orchestration isolated from the
-// source checker itself while loading them on every WordPress request. The
-// background runner must register its WP-Cron hook even outside wp-admin.
 require_once __DIR__ . '/class-event-source-center-reporting.php';
 Sektorel_Event_Source_Center_Reporting::init();
 
@@ -123,8 +120,6 @@ Sektorel_Event_Source_Background_Run_Callback_Fix::init();
 require_once __DIR__ . '/class-event-source-background-nonce-compat.php';
 Sektorel_Event_Source_Background_Nonce_Compat::init();
 
-// Enrichment adapters must also be loaded on WP-Cron/loopback requests so
-// their pipeline and nonce/action-map filters are available to the worker.
 require_once __DIR__ . '/class-event-source-ifm.php';
 Sektorel_Event_Source_IFM::init();
 
@@ -134,17 +129,14 @@ Sektorel_Event_Source_Tuyap::init();
 require_once __DIR__ . '/class-event-source-tuyap-conflict-review.php';
 Sektorel_Event_Source_Tuyap_Conflict_Review::init();
 
-// Canonical draft conversion must be available on both loopback and WP-Cron
-// ticks so canonical candidates can become draft events before enrichment.
 require_once __DIR__ . '/class-event-canonical-draft-stage.php';
 Sektorel_Event_Canonical_Draft_Stage::init();
 
-// Candidate records stay in storage for provenance, but the daily admin UI
-// should behave like a review inbox rather than a historical candidate dump.
 require_once __DIR__ . '/class-event-candidate-inbox.php';
 Sektorel_Event_Candidate_Inbox::init();
 
-// Enrichment-only candidates must not expose the legacy "Etkinliğe Ekle"
-// action because source-role policy intentionally forbids creating a new Event.
 require_once __DIR__ . '/class-event-candidate-enrichment-actions.php';
 Sektorel_Event_Candidate_Enrichment_Actions::init();
+
+require_once __DIR__ . '/class-event-candidate-manual-match.php';
+Sektorel_Event_Candidate_Manual_Match::init();
