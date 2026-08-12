@@ -5,16 +5,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Central contract for Source Center pipeline stages.
+ * Central contract and runtime source of truth for Source Center pipeline stages.
  *
- * Phase 2A introduces the registry without changing the active orchestrator.
- * Phase 2B will migrate the current stage providers and consumers to this
- * contract. Until then, the legacy filters remain the production source of
- * truth and this registry is deliberately side-effect free.
+ * Core stages are registered directly. During the Phase 2 migration the five
+ * internal legacy providers are adopted once from their existing definitions,
+ * then their three parallel filter registrations are removed. The public
+ * legacy filters stay available as compatibility surfaces, but their internal
+ * stage/action/nonce values are now derived from this registry.
  */
 class Sektorel_Event_Source_Stage_Registry {
 
     private static $initialized = false;
+    private static $adopted     = false;
     private static $stages      = array();
 
     public static function init() {
@@ -120,6 +122,165 @@ class Sektorel_Event_Source_Stage_Registry {
     public static function get( $key ) {
         $key = sanitize_key( (string) $key );
         return isset( self::$stages[ $key ] ) ? self::$stages[ $key ] : null;
+    }
+
+    /**
+     * Adopt the current internal provider definitions without duplicating their
+     * labels/payload metadata. After successful adoption their three legacy
+     * filter hooks are removed and compatibility filters are served centrally.
+     */
+    public static function adopt_internal_legacy_providers() {
+        if ( self::$adopted ) {
+            return true;
+        }
+
+        $providers = array(
+            array(
+                'class'    => 'Sektorel_Event_Canonical_Draft_Stage',
+                'key'      => 'canonical_drafts',
+                'order'    => 30,
+                'priority' => 40,
+            ),
+            array(
+                'class'    => 'Sektorel_Event_Source_IFM',
+                'key'      => 'ifm',
+                'order'    => 40,
+                'priority' => 20,
+            ),
+            array(
+                'class'    => 'Sektorel_Event_Source_Tuyap',
+                'key'      => 'tuyap',
+                'order'    => 50,
+                'priority' => 25,
+            ),
+            array(
+                'class'    => 'Sektorel_Event_Candidate_Background_Matcher',
+                'key'      => 'candidate_matcher',
+                'order'    => 80,
+                'priority' => 95,
+            ),
+            array(
+                'class'    => 'Sektorel_Event_Safe_Discovery_Draft_Stage',
+                'key'      => 'safe_discovery_drafts',
+                'order'    => 90,
+                'priority' => 105,
+            ),
+        );
+
+        foreach ( $providers as $provider ) {
+            $result = self::adopt_provider( $provider );
+            if ( is_wp_error( $result ) ) {
+                return $result;
+            }
+        }
+
+        // From this point internal runtime values come from one registry. These
+        // filters remain public so external integrations using the old names do
+        // not fatal; unknown external stage definitions are preserved.
+        add_filter( 'sektorel_source_center_stages', array( __CLASS__, 'filter_runtime_stages' ), 9999 );
+        add_filter( 'sektorel_source_background_action_map', array( __CLASS__, 'filter_action_map' ), 9999 );
+        add_filter( 'sektorel_source_background_nonce_actions', array( __CLASS__, 'filter_nonce_action_map' ), 9999 );
+
+        self::$adopted = true;
+        return true;
+    }
+
+    public static function filter_runtime_stages( $legacy_stages ) {
+        $runtime      = self::runtime_stages();
+        $internal_keys = array();
+        foreach ( $runtime as $stage ) {
+            $internal_keys[ $stage['key'] ] = true;
+        }
+
+        // Preserve third-party/unknown legacy stages instead of silently
+        // dropping them. Internal keys are always replaced by registry values.
+        foreach ( (array) $legacy_stages as $stage ) {
+            if ( ! is_array( $stage ) ) {
+                continue;
+            }
+            $key = isset( $stage['key'] ) ? sanitize_key( (string) $stage['key'] ) : '';
+            if ( ! $key || isset( $internal_keys[ $key ] ) ) {
+                continue;
+            }
+            $runtime[] = $stage;
+        }
+
+        return $runtime;
+    }
+
+    public static function filter_action_map( $legacy_map ) {
+        return array_merge( (array) $legacy_map, self::action_map() );
+    }
+
+    public static function filter_nonce_action_map( $legacy_map ) {
+        return array_merge( (array) $legacy_map, self::nonce_action_map() );
+    }
+
+    private static function adopt_provider( $provider ) {
+        $class    = $provider['class'];
+        $key      = sanitize_key( (string) $provider['key'] );
+        $order    = (int) $provider['order'];
+        $priority = (int) $provider['priority'];
+
+        foreach ( array( 'register_stage', 'register_background_actions', 'register_nonce_actions' ) as $method ) {
+            if ( ! is_callable( array( $class, $method ) ) ) {
+                return new WP_Error( 'stage_provider_unavailable', 'Pipeline provider callback bulunamadı: ' . $class . '::' . $method );
+            }
+        }
+
+        $stage_list = call_user_func( array( $class, 'register_stage' ), self::runtime_stages() );
+        $stage      = self::find_stage( $stage_list, $key );
+        if ( ! $stage ) {
+            return new WP_Error( 'stage_provider_definition_missing', 'Pipeline provider stage tanımı bulunamadı: ' . $key );
+        }
+
+        $actions = call_user_func( array( $class, 'register_background_actions' ), array() );
+        $nonces  = call_user_func( array( $class, 'register_nonce_actions' ), array() );
+
+        $prepare_action = isset( $stage['prepare_action'] ) ? sanitize_key( (string) $stage['prepare_action'] ) : '';
+        $batch_action   = isset( $stage['batch_action'] ) ? sanitize_key( (string) $stage['batch_action'] ) : '';
+        if ( ! $prepare_action || ! $batch_action || empty( $actions[ $prepare_action ] ) || empty( $actions[ $batch_action ] ) || empty( $nonces[ $prepare_action ] ) ) {
+            return new WP_Error( 'stage_provider_contract_invalid', 'Pipeline provider action/nonce sözleşmesi eksik: ' . $key );
+        }
+
+        $registered = self::register(
+            array(
+                'key'              => $key,
+                'order'            => $order,
+                'label'            => isset( $stage['label'] ) ? $stage['label'] : $key,
+                'description'      => isset( $stage['description'] ) ? $stage['description'] : '',
+                'prepare_action'   => $prepare_action,
+                'prepare_callback' => $actions[ $prepare_action ],
+                'batch_action'     => $batch_action,
+                'batch_callback'   => $actions[ $batch_action ],
+                'nonce_action'     => $nonces[ $prepare_action ],
+                'prepare_payload'  => isset( $stage['prepare_payload'] ) && is_array( $stage['prepare_payload'] ) ? $stage['prepare_payload'] : array(),
+            )
+        );
+
+        if ( is_wp_error( $registered ) ) {
+            return $registered;
+        }
+
+        // Remove only after successful registry adoption: fail-closed migration.
+        remove_filter( 'sektorel_source_center_stages', array( $class, 'register_stage' ), $priority );
+        remove_filter( 'sektorel_source_background_action_map', array( $class, 'register_background_actions' ), $priority );
+        remove_filter( 'sektorel_source_background_nonce_actions', array( $class, 'register_nonce_actions' ), $priority );
+
+        return true;
+    }
+
+    private static function find_stage( $stages, $key ) {
+        foreach ( (array) $stages as $stage ) {
+            if ( ! is_array( $stage ) ) {
+                continue;
+            }
+            $candidate_key = isset( $stage['key'] ) ? sanitize_key( (string) $stage['key'] ) : '';
+            if ( $candidate_key === $key ) {
+                return $stage;
+            }
+        }
+        return null;
     }
 
     private static function register_core_stages() {
