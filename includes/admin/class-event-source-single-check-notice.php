@@ -127,3 +127,8 @@ Sektorel_Event_Source_Background_Nonce_Compat::init();
 // so their pipeline and nonce/action-map filters are available to the worker.
 require_once __DIR__ . '/class-event-source-ifm.php';
 Sektorel_Event_Source_IFM::init();
+
+// Canonical draft conversion must be available on both loopback and WP-Cron
+// ticks so canonical candidates can become draft events before enrichment.
+require_once __DIR__ . '/class-event-canonical-draft-stage.php';
+Sektorel_Event_Canonical_Draft_Stage::init();
