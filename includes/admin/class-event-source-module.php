@@ -7,9 +7,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Explicit bootstrap for the event-source ingestion module.
  *
- * Source Center infrastructure used to be loaded as a side effect of
- * class-event-source-single-check-notice.php. Keep the exact class load/init
- * order here, but make module ownership explicit from the Core bootstrap.
+ * Source Center infrastructure is loaded here in one place. Stage providers
+ * initialize first, then the central registry adopts their legacy definitions
+ * and becomes the runtime source of truth for stage/action/nonce contracts.
  */
 class Sektorel_Event_Source_Module {
 
@@ -64,7 +64,41 @@ class Sektorel_Event_Source_Module {
         require_once __DIR__ . '/class-event-safe-discovery-draft-stage.php';
         Sektorel_Event_Safe_Discovery_Draft_Stage::init();
 
+        // Fail-closed migration: only after every internal stage provider has
+        // initialized do we adopt its legacy definitions. If any provider cannot
+        // be adopted, restore every internal legacy hook and keep the proven
+        // production path active for this request.
+        $adoption = Sektorel_Event_Source_Stage_Registry::adopt_internal_legacy_providers();
+        if ( is_wp_error( $adoption ) ) {
+            self::restore_legacy_stage_filters();
+        }
+
         require_once __DIR__ . '/class-event-pipeline-reporting-detail.php';
         Sektorel_Event_Pipeline_Reporting_Detail::init();
+    }
+
+    private static function restore_legacy_stage_filters() {
+        $providers = array(
+            array( 'Sektorel_Event_Source_IFM', 20 ),
+            array( 'Sektorel_Event_Source_Tuyap', 25 ),
+            array( 'Sektorel_Event_Canonical_Draft_Stage', 40 ),
+            array( 'Sektorel_Event_Candidate_Background_Matcher', 95 ),
+            array( 'Sektorel_Event_Safe_Discovery_Draft_Stage', 105 ),
+        );
+
+        foreach ( $providers as $provider ) {
+            $class    = $provider[0];
+            $priority = $provider[1];
+
+            if ( is_callable( array( $class, 'register_stage' ) ) ) {
+                add_filter( 'sektorel_source_center_stages', array( $class, 'register_stage' ), $priority );
+            }
+            if ( is_callable( array( $class, 'register_background_actions' ) ) ) {
+                add_filter( 'sektorel_source_background_action_map', array( $class, 'register_background_actions' ), $priority );
+            }
+            if ( is_callable( array( $class, 'register_nonce_actions' ) ) ) {
+                add_filter( 'sektorel_source_background_nonce_actions', array( $class, 'register_nonce_actions' ), $priority );
+            }
+        }
     }
 }
