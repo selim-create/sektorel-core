@@ -5,76 +5,72 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Resolves ambiguous TOBB city names to the existing city-level location term.
+ * Resolves ambiguous TOBB city names to existing city-level location terms.
  *
- * Province and central-district terms can share the same visible name
- * (Kırklareli, Aksaray, Afyonkarahisar, etc.). The original TOBB mapper
- * deliberately refused ambiguous exact-name matches. This resolver uses the
- * canonical `location_type=city` term metadata to select the province safely.
- * It never creates taxonomy terms and never overwrites an explicit mapping.
+ * Important: no scans run during normal admin page load. Resolution/reapply is
+ * explicit via a protected admin-post action so the TOBB mapping screen remains
+ * cheap and render-safe on constrained hosting.
  */
 class Sektorel_Event_Source_TOBB_Location_Resolver {
 
     const ADAPTER             = 'tobb_fair_calendar';
     const LOCATION_MAP_OPTION = 'sektorel_tobb_location_map_v1';
-    const NOTICE_TRANSIENT    = 'sektorel_tobb_city_resolver_notice_';
+    const NONCE_ACTION        = 'sektorel_tobb_resolve_city_locations';
 
     public static function init() {
-        add_action( 'admin_init', array( __CLASS__, 'maybe_sync_mapping_page' ), 20 );
-        add_action( 'admin_notices', array( __CLASS__, 'admin_notice' ) );
+        add_action( 'admin_post_sektorel_tobb_resolve_city_locations', array( __CLASS__, 'handle_resolve' ) );
+        add_action( 'admin_notices', array( __CLASS__, 'render_mapping_notice' ) );
     }
 
-    public static function maybe_sync_mapping_page() {
+    public static function render_mapping_notice() {
         if ( ! current_user_can( 'manage_options' ) || ! self::is_mapping_page() ) {
             return;
         }
 
-        $resolved = self::sync_city_overrides();
-        $reapplied = 0;
+        $resolved  = isset( $_GET['tobb_city_resolved'] ) ? absint( $_GET['tobb_city_resolved'] ) : null;
+        $reapplied = isset( $_GET['tobb_city_reapplied'] ) ? absint( $_GET['tobb_city_reapplied'] ) : null;
 
-        // If this upgrade resolved previously ambiguous cities, repair already
-        // converted TOBB drafts immediately. Also reapply after mapping saves so
-        // sector/location changes propagate to existing imported candidates.
-        if ( $resolved > 0 || ! empty( $_GET['tobb_mapping_saved'] ) ) {
-            $reapplied = self::reapply_imported_candidates();
+        if ( null !== $resolved || null !== $reapplied ) {
+            echo '<div class="notice notice-success is-dismissible"><p>';
+            echo 'TOBB şehir çözümleme tamamlandı. ';
+            echo 'Yeni güvenli şehir eşlemesi: <strong>' . esc_html( (string) absint( $resolved ) ) . '</strong>, ';
+            echo 'yeniden uygulanan mevcut etkinlik: <strong>' . esc_html( (string) absint( $reapplied ) ) . '</strong>.';
+            echo '</p></div>';
         }
 
-        if ( $resolved > 0 || $reapplied > 0 ) {
-            set_transient(
-                self::NOTICE_TRANSIENT . get_current_user_id(),
-                array(
-                    'resolved'  => $resolved,
-                    'reapplied' => $reapplied,
-                ),
-                MINUTE_IN_SECONDS
-            );
-        }
+        $action_url = wp_nonce_url(
+            admin_url( 'admin-post.php?action=sektorel_tobb_resolve_city_locations' ),
+            self::NONCE_ACTION
+        );
+
+        echo '<div class="notice notice-info"><p>';
+        echo '<strong>TOBB şehir eşleştirmesi:</strong> Aynı isimli il / merkez ilçe kayıtlarında şehir seviyesini güvenli biçimde çözmek için bu işlem yalnızca isteğe bağlı çalışır. ';
+        echo '<a class="button button-secondary" style="margin-left:8px;" href="' . esc_url( $action_url ) . '">Şehir eşlemelerini düzelt</a>';
+        echo '</p></div>';
     }
 
-    public static function admin_notice() {
-        if ( ! self::is_mapping_page() || ! current_user_can( 'manage_options' ) ) {
-            return;
+    public static function handle_resolve() {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( 'Yetkisiz işlem.' );
         }
 
-        $key  = self::NOTICE_TRANSIENT . get_current_user_id();
-        $data = get_transient( $key );
-        if ( ! is_array( $data ) ) {
-            return;
-        }
+        check_admin_referer( self::NONCE_ACTION );
 
-        delete_transient( $key );
+        $resolved  = self::sync_city_overrides();
+        $reapplied = self::reapply_imported_candidates();
 
-        $resolved  = isset( $data['resolved'] ) ? absint( $data['resolved'] ) : 0;
-        $reapplied = isset( $data['reapplied'] ) ? absint( $data['reapplied'] ) : 0;
-
-        echo '<div class="notice notice-success is-dismissible"><p>';
-        if ( $resolved ) {
-            echo '<strong>' . esc_html( (string) $resolved ) . '</strong> belirsiz TOBB şehri, mevcut <code>location_type=city</code> terimi kullanılarak güvenli biçimde çözüldü. ';
-        }
-        if ( $reapplied ) {
-            echo '<strong>' . esc_html( (string) $reapplied ) . '</strong> mevcut TOBB etkinliğine taxonomy eşlemesi yeniden uygulandı.';
-        }
-        echo '</p></div>';
+        wp_safe_redirect(
+            add_query_arg(
+                array(
+                    'post_type'           => 'event',
+                    'page'                => 'sektorel-tobb-taxonomy-mapping',
+                    'tobb_city_resolved'  => absint( $resolved ),
+                    'tobb_city_reapplied' => absint( $reapplied ),
+                ),
+                admin_url( 'edit.php' )
+            )
+        );
+        exit;
     }
 
     private static function sync_city_overrides() {
@@ -154,8 +150,6 @@ class Sektorel_Event_Source_TOBB_Location_Resolver {
             return $city_level[0];
         }
 
-        // Backward-compatible fallback for older location terms whose type meta
-        // may be missing: prefer a direct child of a country-level term.
         if ( 0 === count( $city_level ) ) {
             $country_children = array();
             foreach ( $exact as $term ) {
@@ -179,8 +173,6 @@ class Sektorel_Event_Source_TOBB_Location_Resolver {
             }
         }
 
-        // Preserve the previous safe behaviour when the correct level is still
-        // genuinely ambiguous.
         return 1 === count( $exact ) ? $exact[0] : null;
     }
 
@@ -228,7 +220,7 @@ class Sektorel_Event_Source_TOBB_Location_Resolver {
             array(
                 'post_type'      => 'event_candidate',
                 'post_status'    => 'any',
-                'posts_per_page' => 500,
+                'posts_per_page' => 250,
                 'fields'         => 'ids',
                 'meta_query'     => array(
                     'relation' => 'AND',
