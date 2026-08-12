@@ -130,19 +130,24 @@ class Sektorel_Event_Safe_Discovery_Draft_Stage {
 
             if ( 'existing' === $result ) {
                 $unchanged++;
-                $messages[] = 'Mevcut Event’e bağlandı: ' . get_the_title( $candidate_id );
+                $messages[] = 'Mevcutla birleşti: ' . get_the_title( $candidate_id );
                 continue;
             }
 
-            $event_id = absint( $result );
-            if ( $event_id && 'event' === get_post_type( $event_id ) ) {
+            $created_event_id = absint( $result );
+            if ( $created_event_id && 'event' === get_post_type( $created_event_id ) ) {
                 $final_event_id = absint( get_post_meta( $candidate_id, 'imported_event_id', true ) );
-                if ( $final_event_id && 'event' === get_post_type( $final_event_id ) ) {
-                    $event_id = $final_event_id;
+                if ( ! $final_event_id || 'event' !== get_post_type( $final_event_id ) ) {
+                    $final_event_id = $created_event_id;
                 }
 
-                $created++;
-                $messages[] = 'Yeni güvenli taslak: ' . get_the_title( $candidate_id ) . ' → Event #' . $event_id;
+                if ( $final_event_id !== $created_event_id ) {
+                    $unchanged++;
+                    $messages[] = 'Mevcutla birleşti: ' . get_the_title( $candidate_id ) . ' → Event #' . $final_event_id;
+                } else {
+                    $created++;
+                    $messages[] = 'Yeni güvenli taslak: ' . get_the_title( $candidate_id ) . ' → Event #' . $final_event_id;
+                }
             } else {
                 $error++;
                 $messages[] = 'Hata: ' . get_the_title( $candidate_id ) . ' — geçerli Event ID dönmedi.';
