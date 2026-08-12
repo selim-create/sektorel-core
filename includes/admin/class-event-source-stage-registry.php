@@ -7,16 +7,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Central contract and runtime source of truth for Source Center pipeline stages.
  *
- * Core stages are registered directly. During the Phase 2 migration the five
- * internal legacy providers are adopted once from their existing definitions,
- * then their three parallel filter registrations are removed. The public
- * legacy filters stay available as compatibility surfaces, but their internal
- * stage/action/nonce values are now derived from this registry.
+ * Every internal stage is declared exactly once here. The three historical
+ * filters remain only as public compatibility surfaces for external code;
+ * Core no longer uses provider-specific stage/action/nonce registrations.
  */
 class Sektorel_Event_Source_Stage_Registry {
 
     private static $initialized = false;
-    private static $adopted     = false;
     private static $stages      = array();
 
     public static function init() {
@@ -25,24 +22,15 @@ class Sektorel_Event_Source_Stage_Registry {
         }
 
         self::$initialized = true;
-        self::register_core_stages();
+        self::register_internal_stages();
+
+        // Backward-compatible public surfaces. Internal values always come
+        // from this registry; unknown third-party legacy stages are preserved.
+        add_filter( 'sektorel_source_center_stages', array( __CLASS__, 'filter_runtime_stages' ), 9999 );
+        add_filter( 'sektorel_source_background_action_map', array( __CLASS__, 'filter_action_map' ), 9999 );
+        add_filter( 'sektorel_source_background_nonce_actions', array( __CLASS__, 'filter_nonce_action_map' ), 9999 );
     }
 
-    /**
-     * Register one stage exactly once by key.
-     *
-     * Required fields:
-     * - key
-     * - order
-     * - label
-     * - prepare_action / prepare_callback
-     * - batch_action / batch_callback
-     * - nonce_action
-     *
-     * Optional:
-     * - description
-     * - prepare_payload
-     */
     public static function register( $stage ) {
         if ( ! is_array( $stage ) ) {
             return new WP_Error( 'invalid_stage', 'Pipeline stage tanımı dizi olmalıdır.' );
@@ -76,9 +64,6 @@ class Sektorel_Event_Source_Stage_Registry {
         return $stages;
     }
 
-    /**
-     * UI/background-safe stage payloads with fresh nonces.
-     */
     public static function runtime_stages() {
         $runtime = array();
         foreach ( self::definitions() as $stage ) {
@@ -95,9 +80,6 @@ class Sektorel_Event_Source_Stage_Registry {
         return $runtime;
     }
 
-    /**
-     * Callback map derived from the same stage definitions.
-     */
     public static function action_map() {
         $map = array();
         foreach ( self::definitions() as $stage ) {
@@ -107,9 +89,6 @@ class Sektorel_Event_Source_Stage_Registry {
         return $map;
     }
 
-    /**
-     * Nonce-action map derived from the same stage definitions.
-     */
     public static function nonce_action_map() {
         $map = array();
         foreach ( self::definitions() as $stage ) {
@@ -124,84 +103,24 @@ class Sektorel_Event_Source_Stage_Registry {
         return isset( self::$stages[ $key ] ) ? self::$stages[ $key ] : null;
     }
 
-    /**
-     * Adopt the current internal provider definitions without duplicating their
-     * labels/payload metadata. After successful adoption their three legacy
-     * filter hooks are removed and compatibility filters are served centrally.
-     */
-    public static function adopt_internal_legacy_providers() {
-        if ( self::$adopted ) {
-            return true;
-        }
-
-        $providers = array(
-            array(
-                'class'    => 'Sektorel_Event_Canonical_Draft_Stage',
-                'key'      => 'canonical_drafts',
-                'order'    => 30,
-                'priority' => 40,
-            ),
-            array(
-                'class'    => 'Sektorel_Event_Source_IFM',
-                'key'      => 'ifm',
-                'order'    => 40,
-                'priority' => 20,
-            ),
-            array(
-                'class'    => 'Sektorel_Event_Source_Tuyap',
-                'key'      => 'tuyap',
-                'order'    => 50,
-                'priority' => 25,
-            ),
-            array(
-                'class'    => 'Sektorel_Event_Candidate_Background_Matcher',
-                'key'      => 'candidate_matcher',
-                'order'    => 80,
-                'priority' => 95,
-            ),
-            array(
-                'class'    => 'Sektorel_Event_Safe_Discovery_Draft_Stage',
-                'key'      => 'safe_discovery_drafts',
-                'order'    => 90,
-                'priority' => 105,
-            ),
-        );
-
-        foreach ( $providers as $provider ) {
-            $result = self::adopt_provider( $provider );
-            if ( is_wp_error( $result ) ) {
-                return $result;
-            }
-        }
-
-        // From this point internal runtime values come from one registry. These
-        // filters remain public so external integrations using the old names do
-        // not fatal; unknown external stage definitions are preserved.
-        add_filter( 'sektorel_source_center_stages', array( __CLASS__, 'filter_runtime_stages' ), 9999 );
-        add_filter( 'sektorel_source_background_action_map', array( __CLASS__, 'filter_action_map' ), 9999 );
-        add_filter( 'sektorel_source_background_nonce_actions', array( __CLASS__, 'filter_nonce_action_map' ), 9999 );
-
-        self::$adopted = true;
-        return true;
-    }
-
     public static function filter_runtime_stages( $legacy_stages ) {
-        $runtime      = self::runtime_stages();
+        $runtime       = self::runtime_stages();
         $internal_keys = array();
+
         foreach ( $runtime as $stage ) {
             $internal_keys[ $stage['key'] ] = true;
         }
 
-        // Preserve third-party/unknown legacy stages instead of silently
-        // dropping them. Internal keys are always replaced by registry values.
         foreach ( (array) $legacy_stages as $stage ) {
             if ( ! is_array( $stage ) ) {
                 continue;
             }
+
             $key = isset( $stage['key'] ) ? sanitize_key( (string) $stage['key'] ) : '';
             if ( ! $key || isset( $internal_keys[ $key ] ) ) {
                 continue;
             }
+
             $runtime[] = $stage;
         }
 
@@ -216,75 +135,10 @@ class Sektorel_Event_Source_Stage_Registry {
         return array_merge( (array) $legacy_map, self::nonce_action_map() );
     }
 
-    private static function adopt_provider( $provider ) {
-        $class    = $provider['class'];
-        $key      = sanitize_key( (string) $provider['key'] );
-        $order    = (int) $provider['order'];
-        $priority = (int) $provider['priority'];
+    private static function register_internal_stages() {
+        $year_payload = array( __CLASS__, 'current_year_payload' );
 
-        foreach ( array( 'register_stage', 'register_background_actions', 'register_nonce_actions' ) as $method ) {
-            if ( ! is_callable( array( $class, $method ) ) ) {
-                return new WP_Error( 'stage_provider_unavailable', 'Pipeline provider callback bulunamadı: ' . $class . '::' . $method );
-            }
-        }
-
-        $stage_list = call_user_func( array( $class, 'register_stage' ), self::runtime_stages() );
-        $stage      = self::find_stage( $stage_list, $key );
-        if ( ! $stage ) {
-            return new WP_Error( 'stage_provider_definition_missing', 'Pipeline provider stage tanımı bulunamadı: ' . $key );
-        }
-
-        $actions = call_user_func( array( $class, 'register_background_actions' ), array() );
-        $nonces  = call_user_func( array( $class, 'register_nonce_actions' ), array() );
-
-        $prepare_action = isset( $stage['prepare_action'] ) ? sanitize_key( (string) $stage['prepare_action'] ) : '';
-        $batch_action   = isset( $stage['batch_action'] ) ? sanitize_key( (string) $stage['batch_action'] ) : '';
-        if ( ! $prepare_action || ! $batch_action || empty( $actions[ $prepare_action ] ) || empty( $actions[ $batch_action ] ) || empty( $nonces[ $prepare_action ] ) ) {
-            return new WP_Error( 'stage_provider_contract_invalid', 'Pipeline provider action/nonce sözleşmesi eksik: ' . $key );
-        }
-
-        $registered = self::register(
-            array(
-                'key'              => $key,
-                'order'            => $order,
-                'label'            => isset( $stage['label'] ) ? $stage['label'] : $key,
-                'description'      => isset( $stage['description'] ) ? $stage['description'] : '',
-                'prepare_action'   => $prepare_action,
-                'prepare_callback' => $actions[ $prepare_action ],
-                'batch_action'     => $batch_action,
-                'batch_callback'   => $actions[ $batch_action ],
-                'nonce_action'     => $nonces[ $prepare_action ],
-                'prepare_payload'  => isset( $stage['prepare_payload'] ) && is_array( $stage['prepare_payload'] ) ? $stage['prepare_payload'] : array(),
-            )
-        );
-
-        if ( is_wp_error( $registered ) ) {
-            return $registered;
-        }
-
-        // Remove only after successful registry adoption: fail-closed migration.
-        remove_filter( 'sektorel_source_center_stages', array( $class, 'register_stage' ), $priority );
-        remove_filter( 'sektorel_source_background_action_map', array( $class, 'register_background_actions' ), $priority );
-        remove_filter( 'sektorel_source_background_nonce_actions', array( $class, 'register_nonce_actions' ), $priority );
-
-        return true;
-    }
-
-    private static function find_stage( $stages, $key ) {
-        foreach ( (array) $stages as $stage ) {
-            if ( ! is_array( $stage ) ) {
-                continue;
-            }
-            $candidate_key = isset( $stage['key'] ) ? sanitize_key( (string) $stage['key'] ) : '';
-            if ( $candidate_key === $key ) {
-                return $stage;
-            }
-        }
-        return null;
-    }
-
-    private static function register_core_stages() {
-        self::register(
+        $stages = array(
             array(
                 'key'              => 'source_check',
                 'order'            => 10,
@@ -296,10 +150,7 @@ class Sektorel_Event_Source_Stage_Registry {
                 'batch_callback'   => array( 'Sektorel_Event_Source_Checker', 'ajax_check_batch' ),
                 'nonce_action'     => 'sektorel_event_source_check',
                 'prepare_payload'  => array(),
-            )
-        );
-
-        self::register(
+            ),
             array(
                 'key'              => 'tobb',
                 'order'            => 20,
@@ -310,11 +161,44 @@ class Sektorel_Event_Source_Stage_Registry {
                 'batch_action'     => 'sektorel_tobb_import_batch',
                 'batch_callback'   => array( 'Sektorel_Event_Source_TOBB', 'ajax_import_batch' ),
                 'nonce_action'     => 'sektorel_tobb_fair_calendar',
-                'prepare_payload'  => array( __CLASS__, 'current_year_payload' ),
-            )
-        );
-
-        self::register(
+                'prepare_payload'  => $year_payload,
+            ),
+            array(
+                'key'              => 'canonical_drafts',
+                'order'            => 30,
+                'label'            => 'Güvenli Canonical Draft Üret',
+                'description'      => 'TOBB gibi canonical kaynaklardaki uygun adayları mevcut dedupe ve source-role kurallarıyla taslak etkinliğe dönüştürür.',
+                'prepare_action'   => 'sektorel_canonical_drafts_prepare',
+                'prepare_callback' => array( 'Sektorel_Event_Canonical_Draft_Stage', 'ajax_prepare' ),
+                'batch_action'     => 'sektorel_canonical_drafts_batch',
+                'batch_callback'   => array( 'Sektorel_Event_Canonical_Draft_Stage', 'ajax_batch' ),
+                'nonce_action'     => 'sektorel_canonical_candidate_drafts',
+                'prepare_payload'  => array(),
+            ),
+            array(
+                'key'              => 'ifm',
+                'order'            => 40,
+                'label'            => 'İFM Mekan Zenginleştirme',
+                'description'      => 'İstanbul Fuar Merkezi takvimini mevcut etkinliklerle eşleştirir ve eksik mekan/salon, organizatör ve resmî site alanlarını tamamlar.',
+                'prepare_action'   => 'sektorel_ifm_prepare',
+                'prepare_callback' => array( 'Sektorel_Event_Source_IFM', 'ajax_prepare' ),
+                'batch_action'     => 'sektorel_ifm_import_batch',
+                'batch_callback'   => array( 'Sektorel_Event_Source_IFM', 'ajax_import_batch' ),
+                'nonce_action'     => 'sektorel_ifm_fair_calendar',
+                'prepare_payload'  => $year_payload,
+            ),
+            array(
+                'key'              => 'tuyap',
+                'order'            => 50,
+                'label'            => 'Tüyap Mekan / Organizatör Zenginleştirme',
+                'description'      => 'Tüyap İstanbul fuar takvimini mevcut etkinliklerle eşleştirir; eksik mekan, organizatör, bitiş tarihi, resmî site ve açıklamayı tamamlar.',
+                'prepare_action'   => 'sektorel_tuyap_prepare',
+                'prepare_callback' => array( 'Sektorel_Event_Source_Tuyap', 'ajax_prepare' ),
+                'batch_action'     => 'sektorel_tuyap_import_batch',
+                'batch_callback'   => array( 'Sektorel_Event_Source_Tuyap', 'ajax_import_batch' ),
+                'nonce_action'     => 'sektorel_tuyap_fair_calendar',
+                'prepare_payload'  => $year_payload,
+            ),
             array(
                 'key'              => 'jsonld',
                 'order'            => 60,
@@ -326,10 +210,7 @@ class Sektorel_Event_Source_Stage_Registry {
                 'batch_callback'   => array( 'Sektorel_Event_Candidate_JSONLD', 'ajax_scan_batch' ),
                 'nonce_action'     => 'sektorel_event_candidate_jsonld',
                 'prepare_payload'  => array(),
-            )
-        );
-
-        self::register(
+            ),
             array(
                 'key'              => 'html',
                 'order'            => 70,
@@ -341,8 +222,36 @@ class Sektorel_Event_Source_Stage_Registry {
                 'batch_callback'   => array( 'Sektorel_Event_Candidate_HTML', 'ajax_scan_batch' ),
                 'nonce_action'     => 'sektorel_event_candidate_html',
                 'prepare_payload'  => array(),
-            )
+            ),
+            array(
+                'key'              => 'candidate_matcher',
+                'order'            => 80,
+                'label'            => 'Adayları Otomatik Eşleştir',
+                'description'      => 'Discovery/canonical adaylarını mevcut deterministic matcher ile Event havuzuna karşı sınıflandırır; güçlü mevcut eşleşmeleri kaynak kanıtına bağlar.',
+                'prepare_action'   => 'sektorel_candidate_match_prepare',
+                'prepare_callback' => array( 'Sektorel_Event_Candidate_Background_Matcher', 'ajax_prepare' ),
+                'batch_action'     => 'sektorel_candidate_match_batch',
+                'batch_callback'   => array( 'Sektorel_Event_Candidate_Background_Matcher', 'ajax_batch' ),
+                'nonce_action'     => 'sektorel_candidate_background_matcher',
+                'prepare_payload'  => array(),
+            ),
+            array(
+                'key'              => 'safe_discovery_drafts',
+                'order'            => 90,
+                'label'            => 'Güvenli Discovery Draft Üret',
+                'description'      => 'Matcher tarafından yeni doğrulanan, güvenli HTML discovery adaylarını mevcut guardlarla yalnız taslak Event’e dönüştürür.',
+                'prepare_action'   => 'sektorel_safe_discovery_drafts_prepare',
+                'prepare_callback' => array( 'Sektorel_Event_Safe_Discovery_Draft_Stage', 'ajax_prepare' ),
+                'batch_action'     => 'sektorel_safe_discovery_drafts_batch',
+                'batch_callback'   => array( 'Sektorel_Event_Safe_Discovery_Draft_Stage', 'ajax_batch' ),
+                'nonce_action'     => 'sektorel_safe_discovery_drafts',
+                'prepare_payload'  => array(),
+            ),
         );
+
+        foreach ( $stages as $stage ) {
+            self::register( $stage );
+        }
     }
 
     public static function current_year_payload() {
@@ -364,6 +273,7 @@ class Sektorel_Event_Source_Stage_Registry {
             'key', 'order', 'label', 'prepare_action', 'prepare_callback',
             'batch_action', 'batch_callback', 'nonce_action',
         );
+
         foreach ( $required as $field ) {
             if ( ! array_key_exists( $field, $stage ) || '' === $stage[ $field ] || null === $stage[ $field ] ) {
                 return new WP_Error( 'stage_field_missing', 'Pipeline stage alanı eksik: ' . $field );
