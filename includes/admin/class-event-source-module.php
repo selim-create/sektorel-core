@@ -8,12 +8,13 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Explicit bootstrap for the event-source ingestion module.
  *
  * Source Center infrastructure is loaded here in one place. Stage providers
- * initialize first, then the central registry adopts their legacy definitions
- * and becomes the runtime source of truth for stage/action/nonce contracts.
+ * initialize during plugin bootstrap; registry adoption is deferred until
+ * WordPress init so pluggable nonce functions are available.
  */
 class Sektorel_Event_Source_Module {
 
     private static $initialized = false;
+    private static $registry_adoption_completed = false;
 
     public static function init() {
         if ( self::$initialized ) {
@@ -64,6 +65,22 @@ class Sektorel_Event_Source_Module {
         require_once __DIR__ . '/class-event-safe-discovery-draft-stage.php';
         Sektorel_Event_Safe_Discovery_Draft_Stage::init();
 
+        // Provider registration methods generate WordPress nonces. During active
+        // plugin loading wp_create_nonce() is not guaranteed to exist yet, so
+        // adoption must not run synchronously from the plugin constructor.
+        add_action( 'init', array( __CLASS__, 'adopt_stage_registry' ), 1 );
+
+        require_once __DIR__ . '/class-event-pipeline-reporting-detail.php';
+        Sektorel_Event_Pipeline_Reporting_Detail::init();
+    }
+
+    public static function adopt_stage_registry() {
+        if ( self::$registry_adoption_completed ) {
+            return;
+        }
+
+        self::$registry_adoption_completed = true;
+
         // Fail-closed migration: only after every internal stage provider has
         // initialized do we adopt its legacy definitions. If any provider cannot
         // be adopted, restore every internal legacy hook and keep the proven
@@ -72,9 +89,6 @@ class Sektorel_Event_Source_Module {
         if ( is_wp_error( $adoption ) ) {
             self::restore_legacy_stage_filters();
         }
-
-        require_once __DIR__ . '/class-event-pipeline-reporting-detail.php';
-        Sektorel_Event_Pipeline_Reporting_Detail::init();
     }
 
     private static function restore_legacy_stage_filters() {
