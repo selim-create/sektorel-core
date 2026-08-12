@@ -23,6 +23,8 @@ class Sektorel_Event_Source_Module {
 
         // Load the registry class early, but initialize it only after every
         // internal provider class below is available for callback validation.
+        // Registry initialization itself does not create nonces; runtime_stages()
+        // creates fresh nonces only when Source Center/background consumers ask.
         require_once __DIR__ . '/class-event-source-stage-registry.php';
 
         require_once __DIR__ . '/class-event-source-center-reporting.php';
