@@ -65,6 +65,13 @@ class Sektorel_Event_Candidate_Inbox {
             return $views;
         }
 
+        // Candidate posts use WordPress' publish post status as a storage detail,
+        // not as an operational state. Remove those native post-status views so
+        // they cannot duplicate or contradict the candidate workflow views.
+        foreach ( array( 'publish', 'mine', 'draft', 'pending', 'private', 'future' ) as $native_view ) {
+            unset( $views[ $native_view ] );
+        }
+
         $counts  = self::counts();
         $current = isset( $_GET['candidate_view'] ) ? sanitize_key( wp_unslash( $_GET['candidate_view'] ) ) : 'inbox';
         if ( ! empty( $_GET['candidate_match_status'] ) ) {
