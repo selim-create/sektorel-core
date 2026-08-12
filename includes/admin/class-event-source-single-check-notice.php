@@ -131,6 +131,9 @@ Sektorel_Event_Source_IFM::init();
 require_once __DIR__ . '/class-event-source-tuyap.php';
 Sektorel_Event_Source_Tuyap::init();
 
+require_once __DIR__ . '/class-event-source-tuyap-conflict-review.php';
+Sektorel_Event_Source_Tuyap_Conflict_Review::init();
+
 // Canonical draft conversion must be available on both loopback and WP-Cron
 // ticks so canonical candidates can become draft events before enrichment.
 require_once __DIR__ . '/class-event-canonical-draft-stage.php';
