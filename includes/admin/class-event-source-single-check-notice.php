@@ -116,3 +116,6 @@ Sektorel_Event_Source_Center_Reporting::init();
 
 require_once __DIR__ . '/class-event-source-background-run.php';
 Sektorel_Event_Source_Background_Run::init();
+
+require_once __DIR__ . '/class-event-source-background-run-callback-fix.php';
+Sektorel_Event_Source_Background_Run_Callback_Fix::init();
