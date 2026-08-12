@@ -23,8 +23,6 @@ class Sektorel_Event_Canonical_Draft_Stage {
         add_action( 'wp_ajax_sektorel_canonical_drafts_prepare', array( __CLASS__, 'ajax_prepare' ) );
         add_action( 'wp_ajax_sektorel_canonical_drafts_batch', array( __CLASS__, 'ajax_batch' ) );
 
-        // Source-specific stages (IFM etc.) register earlier. We then insert
-        // canonical conversion immediately before the first enrichment stage.
         add_filter( 'sektorel_source_center_stages', array( __CLASS__, 'register_stage' ), 40 );
         add_filter( 'sektorel_source_background_action_map', array( __CLASS__, 'register_background_actions' ), 40 );
         add_filter( 'sektorel_source_background_nonce_actions', array( __CLASS__, 'register_nonce_actions' ), 40 );
@@ -46,12 +44,10 @@ class Sektorel_Event_Canonical_Draft_Stage {
 
         foreach ( (array) $stages as $existing ) {
             $key = isset( $existing['key'] ) ? sanitize_key( (string) $existing['key'] ) : '';
-
             if ( ! $inserted && in_array( $key, array( 'ifm', 'tuyap' ), true ) ) {
                 $result[] = $stage;
                 $inserted = true;
             }
-
             $result[] = $existing;
         }
 
@@ -139,7 +135,19 @@ class Sektorel_Event_Canonical_Draft_Stage {
                 continue;
             }
 
-            $title  = get_the_title( $candidate_id );
+            $title = get_the_title( $candidate_id );
+
+            // Matcher already found the occurrence: attach canonical evidence
+            // directly instead of creating even a temporary duplicate draft.
+            $matched_event_id = absint( get_post_meta( $candidate_id, 'matched_event_id', true ) );
+            if ( $matched_event_id && 'event' === get_post_type( $matched_event_id ) && 'trash' !== get_post_status( $matched_event_id ) ) {
+                update_post_meta( $candidate_id, 'candidate_status', 'imported' );
+                update_post_meta( $candidate_id, 'imported_event_id', $matched_event_id );
+                $unchanged++;
+                $messages[] = 'Mevcut etkinliğe bağlandı: ' . $title;
+                continue;
+            }
+
             $result = self::convert_with_existing_engine( $candidate_id );
 
             if ( is_wp_error( $result ) ) {
@@ -155,6 +163,10 @@ class Sektorel_Event_Canonical_Draft_Stage {
 
             $event_id = absint( $result );
             if ( $event_id && 'event' === get_post_type( $event_id ) ) {
+                $final_event_id = absint( get_post_meta( $candidate_id, 'imported_event_id', true ) );
+                if ( $final_event_id && 'event' === get_post_type( $final_event_id ) ) {
+                    $event_id = $final_event_id;
+                }
                 $created++;
                 $messages[] = 'Yeni taslak: ' . $title;
             } else {
@@ -182,8 +194,6 @@ class Sektorel_Event_Canonical_Draft_Stage {
     }
 
     private static function convert_with_existing_engine( $candidate_id ) {
-        // Reuse the private conversion engine without duplicating its behavior.
-        // Closure::bind executes this tiny gateway in the Quality class scope.
         $gateway = Closure::bind(
             static function ( $id ) {
                 return Sektorel_Event_Candidate_Quality::convert_candidate( $id );
