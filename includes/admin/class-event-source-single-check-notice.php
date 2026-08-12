@@ -122,3 +122,8 @@ Sektorel_Event_Source_Background_Run_Callback_Fix::init();
 
 require_once __DIR__ . '/class-event-source-background-nonce-compat.php';
 Sektorel_Event_Source_Background_Nonce_Compat::init();
+
+// Venue-enrichment adapters must also be loaded on WP-Cron/loopback requests
+// so their pipeline and nonce/action-map filters are available to the worker.
+require_once __DIR__ . '/class-event-source-ifm.php';
+Sektorel_Event_Source_IFM::init();
