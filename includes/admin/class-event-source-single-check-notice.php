@@ -35,9 +35,7 @@ class Sektorel_Event_Source_Single_Check_Notice {
             $state = isset( $_GET['sektorel_check'] ) ? sanitize_key( wp_unslash( $_GET['sektorel_check'] ) ) : '';
         }
 
-        $args = array(
-            'sektorel_source_id' => $source_id,
-        );
+        $args = array( 'sektorel_source_id' => $source_id );
         if ( in_array( $state, array( 'ok', 'error', 'skipped' ), true ) ) {
             $args['sektorel_check'] = $state;
         }
@@ -140,3 +138,6 @@ Sektorel_Event_Candidate_Enrichment_Actions::init();
 
 require_once __DIR__ . '/class-event-candidate-manual-match.php';
 Sektorel_Event_Candidate_Manual_Match::init();
+
+require_once __DIR__ . '/class-event-candidate-background-matcher.php';
+Sektorel_Event_Candidate_Background_Matcher::init();
