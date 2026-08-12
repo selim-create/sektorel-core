@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Sektorel Core
  * Description: Sektörel Ajanda projesi için CPT, Taxonomy ve API tanımlarını içeren çekirdek eklenti.
- * Version: 1.43.0
+ * Version: 1.43.1
  * Author: Sektörel Ajanda Dev Team
  * Text Domain: sektorel-core
  */
@@ -26,6 +26,10 @@ class Sektorel_Core {
 
     public function __construct() {
         $this->includes();
+
+        // Event-source ingestion must be available for admin AJAX and WP-Cron,
+        // so initialize its explicit module bootstrap outside the is_admin gate.
+        Sektorel_Event_Source_Module::init();
 
         Sektorel_Token_Service::init();
         Sektorel_Company_Media::init();
@@ -137,6 +141,7 @@ class Sektorel_Core {
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-url-normalizer.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-checker.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-single-check-notice.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-module.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-health.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-target-discovery.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-target-safety.php';
