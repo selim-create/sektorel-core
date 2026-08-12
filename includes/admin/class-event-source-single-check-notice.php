@@ -108,6 +108,11 @@ class Sektorel_Event_Source_Single_Check_Notice {
     }
 }
 
-// Keep Source Center run reporting isolated from the operational orchestrator.
+// Keep Source Center reporting / background orchestration isolated from the
+// source checker itself while loading them on every WordPress request. The
+// background runner must register its WP-Cron hook even outside wp-admin.
 require_once __DIR__ . '/class-event-source-center-reporting.php';
 Sektorel_Event_Source_Center_Reporting::init();
+
+require_once __DIR__ . '/class-event-source-background-run.php';
+Sektorel_Event_Source_Background_Run::init();
