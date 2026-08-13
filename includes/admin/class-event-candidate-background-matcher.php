@@ -21,51 +21,6 @@ class Sektorel_Event_Candidate_Background_Matcher {
     public static function init() {
         add_action( 'wp_ajax_sektorel_candidate_match_prepare', array( __CLASS__, 'ajax_prepare' ) );
         add_action( 'wp_ajax_sektorel_candidate_match_batch', array( __CLASS__, 'ajax_batch' ) );
-
-        add_filter( 'sektorel_source_center_stages', array( __CLASS__, 'register_stage' ), 95 );
-        add_filter( 'sektorel_source_background_action_map', array( __CLASS__, 'register_background_actions' ), 95 );
-        add_filter( 'sektorel_source_background_nonce_actions', array( __CLASS__, 'register_nonce_actions' ), 95 );
-    }
-
-    public static function register_stage( $stages ) {
-        $stage = array(
-            'key'             => 'candidate_matcher',
-            'label'           => 'Adayları Otomatik Eşleştir',
-            'description'     => 'Discovery/canonical adaylarını mevcut deterministic matcher ile Event havuzuna karşı sınıflandırır; güçlü mevcut eşleşmeleri kaynak kanıtına bağlar.',
-            'prepare_action'  => 'sektorel_candidate_match_prepare',
-            'batch_action'    => 'sektorel_candidate_match_batch',
-            'nonce'           => wp_create_nonce( self::NONCE_ACTION ),
-            'prepare_payload' => array(),
-        );
-
-        $result   = array();
-        $inserted = false;
-        foreach ( (array) $stages as $existing ) {
-            $result[] = $existing;
-            $key = isset( $existing['key'] ) ? sanitize_key( (string) $existing['key'] ) : '';
-            if ( ! $inserted && 'html' === $key ) {
-                $result[] = $stage;
-                $inserted = true;
-            }
-        }
-
-        if ( ! $inserted ) {
-            $result[] = $stage;
-        }
-
-        return $result;
-    }
-
-    public static function register_background_actions( $map ) {
-        $map['sektorel_candidate_match_prepare'] = array( __CLASS__, 'ajax_prepare' );
-        $map['sektorel_candidate_match_batch']   = array( __CLASS__, 'ajax_batch' );
-        return $map;
-    }
-
-    public static function register_nonce_actions( $map ) {
-        $map['sektorel_candidate_match_prepare'] = self::NONCE_ACTION;
-        $map['sektorel_candidate_match_batch']   = self::NONCE_ACTION;
-        return $map;
     }
 
     public static function ajax_prepare() {

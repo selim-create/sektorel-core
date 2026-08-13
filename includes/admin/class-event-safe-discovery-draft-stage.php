@@ -21,51 +21,6 @@ class Sektorel_Event_Safe_Discovery_Draft_Stage {
     public static function init() {
         add_action( 'wp_ajax_sektorel_safe_discovery_drafts_prepare', array( __CLASS__, 'ajax_prepare' ) );
         add_action( 'wp_ajax_sektorel_safe_discovery_drafts_batch', array( __CLASS__, 'ajax_batch' ) );
-
-        add_filter( 'sektorel_source_center_stages', array( __CLASS__, 'register_stage' ), 105 );
-        add_filter( 'sektorel_source_background_action_map', array( __CLASS__, 'register_background_actions' ), 105 );
-        add_filter( 'sektorel_source_background_nonce_actions', array( __CLASS__, 'register_nonce_actions' ), 105 );
-    }
-
-    public static function register_stage( $stages ) {
-        $stage = array(
-            'key'             => 'safe_discovery_drafts',
-            'label'           => 'Güvenli Discovery Draft Üret',
-            'description'     => 'Matcher tarafından yeni doğrulanan, güvenli HTML discovery adaylarını mevcut guardlarla yalnız taslak Event’e dönüştürür.',
-            'prepare_action'  => 'sektorel_safe_discovery_drafts_prepare',
-            'batch_action'    => 'sektorel_safe_discovery_drafts_batch',
-            'nonce'           => wp_create_nonce( self::NONCE_ACTION ),
-            'prepare_payload' => array(),
-        );
-
-        $result   = array();
-        $inserted = false;
-        foreach ( (array) $stages as $existing ) {
-            $result[] = $existing;
-            $key = isset( $existing['key'] ) ? sanitize_key( (string) $existing['key'] ) : '';
-            if ( ! $inserted && 'candidate_matcher' === $key ) {
-                $result[] = $stage;
-                $inserted = true;
-            }
-        }
-
-        if ( ! $inserted ) {
-            $result[] = $stage;
-        }
-
-        return $result;
-    }
-
-    public static function register_background_actions( $map ) {
-        $map['sektorel_safe_discovery_drafts_prepare'] = array( __CLASS__, 'ajax_prepare' );
-        $map['sektorel_safe_discovery_drafts_batch']   = array( __CLASS__, 'ajax_batch' );
-        return $map;
-    }
-
-    public static function register_nonce_actions( $map ) {
-        $map['sektorel_safe_discovery_drafts_prepare'] = self::NONCE_ACTION;
-        $map['sektorel_safe_discovery_drafts_batch']   = self::NONCE_ACTION;
-        return $map;
     }
 
     public static function ajax_prepare() {

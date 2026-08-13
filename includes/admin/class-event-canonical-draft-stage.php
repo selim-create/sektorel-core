@@ -22,65 +22,6 @@ class Sektorel_Event_Canonical_Draft_Stage {
     public static function init() {
         add_action( 'wp_ajax_sektorel_canonical_drafts_prepare', array( __CLASS__, 'ajax_prepare' ) );
         add_action( 'wp_ajax_sektorel_canonical_drafts_batch', array( __CLASS__, 'ajax_batch' ) );
-
-        add_filter( 'sektorel_source_center_stages', array( __CLASS__, 'register_stage' ), 40 );
-        add_filter( 'sektorel_source_background_action_map', array( __CLASS__, 'register_background_actions' ), 40 );
-        add_filter( 'sektorel_source_background_nonce_actions', array( __CLASS__, 'register_nonce_actions' ), 40 );
-    }
-
-    public static function register_stage( $stages ) {
-        $stage = array(
-            'key'             => 'canonical_drafts',
-            'label'           => 'Güvenli Canonical Draft Üret',
-            'description'     => 'TOBB gibi canonical kaynaklardaki uygun adayları mevcut dedupe ve source-role kurallarıyla taslak etkinliğe dönüştürür.',
-            'prepare_action'  => 'sektorel_canonical_drafts_prepare',
-            'batch_action'    => 'sektorel_canonical_drafts_batch',
-            'nonce'           => wp_create_nonce( self::NONCE_ACTION ),
-            'prepare_payload' => array(),
-        );
-
-        $result   = array();
-        $inserted = false;
-
-        foreach ( (array) $stages as $existing ) {
-            $key = isset( $existing['key'] ) ? sanitize_key( (string) $existing['key'] ) : '';
-            if ( ! $inserted && in_array( $key, array( 'ifm', 'tuyap' ), true ) ) {
-                $result[] = $stage;
-                $inserted = true;
-            }
-            $result[] = $existing;
-        }
-
-        if ( ! $inserted ) {
-            $after_tobb = array();
-            foreach ( $result as $existing ) {
-                $after_tobb[] = $existing;
-                $key = isset( $existing['key'] ) ? sanitize_key( (string) $existing['key'] ) : '';
-                if ( ! $inserted && 'tobb' === $key ) {
-                    $after_tobb[] = $stage;
-                    $inserted = true;
-                }
-            }
-            $result = $after_tobb;
-        }
-
-        if ( ! $inserted ) {
-            $result[] = $stage;
-        }
-
-        return $result;
-    }
-
-    public static function register_background_actions( $map ) {
-        $map['sektorel_canonical_drafts_prepare'] = array( __CLASS__, 'ajax_prepare' );
-        $map['sektorel_canonical_drafts_batch']   = array( __CLASS__, 'ajax_batch' );
-        return $map;
-    }
-
-    public static function register_nonce_actions( $map ) {
-        $map['sektorel_canonical_drafts_prepare'] = self::NONCE_ACTION;
-        $map['sektorel_canonical_drafts_batch']   = self::NONCE_ACTION;
-        return $map;
     }
 
     public static function ajax_prepare() {
