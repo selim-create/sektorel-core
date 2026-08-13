@@ -1,0 +1,48 @@
+name: Temp Runner Callback Cleanup
+
+on:
+  push:
+    branches:
+      - refactor/background-runner-callback-cleanup-1438
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: refactor/background-runner-callback-cleanup-1438
+          fetch-depth: 0
+
+      - name: Make footer renderer public
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('includes/admin/class-event-source-background-run.php')
+          text = path.read_text()
+          old = '    private static function render_source_center_script() {'
+          new = '    public static function render_source_center_script() {'
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'expected exactly one private renderer, found {count}')
+          text = text.replace(old, new, 1)
+          if old in text:
+              raise SystemExit('private renderer token still present')
+          if text.count(new) != 1:
+              raise SystemExit('public renderer count mismatch')
+          path.write_text(text)
+          PY
+
+      - name: Commit visibility cleanup
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add includes/admin/class-event-source-background-run.php
+          git commit -m "Core 1.43.8: make background footer renderer public"
+          git push origin HEAD:refactor/background-runner-callback-cleanup-1438
