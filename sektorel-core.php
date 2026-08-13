@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Sektorel Core
  * Description: Sektörel Ajanda projesi için CPT, Taxonomy ve API tanımlarını içeren çekirdek eklenti.
- * Version: 1.44.0
+ * Version: 1.44.1
  * Author: Sektörel Ajanda Dev Team
  * Text Domain: sektorel-core
  */
@@ -26,22 +26,16 @@ class Sektorel_Core {
 
     public function __construct() {
         $this->includes();
-
-        // Event-source ingestion must be available for admin AJAX and WP-Cron,
-        // so initialize its explicit module bootstrap outside the is_admin gate.
         Sektorel_Event_Source_Module::init();
-
         Sektorel_Token_Service::init();
         Sektorel_Company_Media::init();
         Sektorel_Job_Application_Files::init();
         Sektorel_Job_Application_Access_Fix::init();
         Sektorel_Mail_Observability::init();
         Sektorel_Event_Reminders::init();
-
         add_action( 'init', array( $this, 'register_post_types' ) );
         add_action( 'init', array( $this, 'register_taxonomies' ) );
         add_action( 'init', array( $this, 'init_fields' ) );
-
         if ( is_admin() ) {
             Sektorel_Demo_Importer::init();
             Sektorel_Event_Source_Admin::init();
@@ -88,7 +82,6 @@ class Sektorel_Core {
             Sektorel_Event_Content_Quality::init();
             Sektorel_Event_Candidate_Field_Quality::init();
         }
-
         Sektorel_Company_Mutations::init();
         Sektorel_Company_Profile::init();
         Sektorel_Company_Settings::init();
@@ -104,7 +97,6 @@ class Sektorel_Core {
         Sektorel_Content_Submissions::init();
         Sektorel_Offers::init();
         Sektorel_Job_Applications::init();
-
         add_action( 'graphql_register_types', array( $this, 'register_graphql_types' ) );
     }
 
@@ -118,17 +110,14 @@ class Sektorel_Core {
         require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-career.php';
         require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-offer.php';
         require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-job-application.php';
-
         require_once SEKTOREL_CORE_PATH . 'includes/taxonomies/class-sector.php';
         require_once SEKTOREL_CORE_PATH . 'includes/taxonomies/class-location.php';
-
         require_once SEKTOREL_CORE_PATH . 'includes/fields/company-fields.php';
         require_once SEKTOREL_CORE_PATH . 'includes/fields/lead-fields.php';
         require_once SEKTOREL_CORE_PATH . 'includes/fields/event-fields.php';
         require_once SEKTOREL_CORE_PATH . 'includes/fields/sector-fields.php';
         require_once SEKTOREL_CORE_PATH . 'includes/fields/career-fields.php';
         require_once SEKTOREL_CORE_PATH . 'includes/fields/location-fields.php';
-
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-demo-importer.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-admin.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-role.php';
