@@ -66,29 +66,11 @@ class Sektorel_Event_Source_Module {
         require_once __DIR__ . '/class-event-safe-discovery-draft-stage.php';
         Sektorel_Event_Safe_Discovery_Draft_Stage::init();
 
-        // IFM/Tüyap are the only providers that still register legacy stage
-        // filters in Phase 2C.2A. Their dead registration code is removed in
-        // 2C.2B; until then detach only those two internal hooks.
-        self::detach_remaining_adapter_legacy_stage_filters();
+        // All internal stage providers now expose only parser/AJAX behavior.
+        // Stage Registry is the sole internal stage/action/nonce source.
         Sektorel_Event_Source_Stage_Registry::init();
 
         require_once __DIR__ . '/class-event-pipeline-reporting-detail.php';
         Sektorel_Event_Pipeline_Reporting_Detail::init();
-    }
-
-    private static function detach_remaining_adapter_legacy_stage_filters() {
-        $providers = array(
-            array( 'Sektorel_Event_Source_IFM', 20 ),
-            array( 'Sektorel_Event_Source_Tuyap', 25 ),
-        );
-
-        foreach ( $providers as $provider ) {
-            $class    = $provider[0];
-            $priority = $provider[1];
-
-            remove_filter( 'sektorel_source_center_stages', array( $class, 'register_stage' ), $priority );
-            remove_filter( 'sektorel_source_background_action_map', array( $class, 'register_background_actions' ), $priority );
-            remove_filter( 'sektorel_source_background_nonce_actions', array( $class, 'register_nonce_actions' ), $priority );
-        }
     }
 }
