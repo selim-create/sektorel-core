@@ -191,6 +191,8 @@ class Sektorel_Event_Source_Background_Run {
             }
 
             wp_set_current_user( absint( $run['user_id'] ) );
+            $run = self::refresh_stage_nonces( $run );
+            self::save_run( $run );
             $run['status']     = 'running';
             $run['updated_at'] = current_time( 'mysql' );
 
@@ -535,61 +537,33 @@ class Sektorel_Event_Source_Background_Run {
     }
 
     private static function action_map() {
-        $map = array(
-            'sektorel_event_source_prepare_checks' => array( 'Sektorel_Event_Source_Checker', 'ajax_prepare_checks' ),
-            'sektorel_event_source_check_batch'    => array( 'Sektorel_Event_Source_Checker', 'ajax_check_batch' ),
-            'sektorel_tobb_prepare'                => array( 'Sektorel_Event_Source_TOBB', 'ajax_prepare' ),
-            'sektorel_tobb_import_batch'           => array( 'Sektorel_Event_Source_TOBB', 'ajax_import_batch' ),
-            'sektorel_prepare_jsonld_scan'         => array( 'Sektorel_Event_Candidate_JSONLD', 'ajax_prepare_scan' ),
-            'sektorel_jsonld_scan_batch'           => array( 'Sektorel_Event_Candidate_JSONLD', 'ajax_scan_batch' ),
-            'sektorel_prepare_html_event_scan'     => array( 'Sektorel_Event_Candidate_HTML', 'ajax_prepare_scan' ),
-            'sektorel_html_event_scan_batch'       => array( 'Sektorel_Event_Candidate_HTML', 'ajax_scan_batch' ),
-        );
+        $map = Sektorel_Event_Source_Stage_Registry::action_map();
         return apply_filters( 'sektorel_source_background_action_map', $map );
     }
 
-    private static function pipeline_stages() {
-        $year = (int) current_time( 'Y' );
-        $stages = array(
-            array(
-                'key'             => 'source_check',
-                'label'           => 'Kaynakları Doğrula',
-                'description'     => 'Aktif kaynakların erişilebilirlik ve parser sinyalini kontrol eder.',
-                'prepare_action'  => 'sektorel_event_source_prepare_checks',
-                'batch_action'    => 'sektorel_event_source_check_batch',
-                'nonce'           => wp_create_nonce( 'sektorel_event_source_check' ),
-                'prepare_payload' => array(),
-            ),
-            array(
-                'key'             => 'tobb',
-                'label'           => 'TOBB Fuar Takvimi',
-                'description'     => 'Canonical fuar occurrence kayıtlarını aday havuzuna günceller.',
-                'prepare_action'  => 'sektorel_tobb_prepare',
-                'batch_action'    => 'sektorel_tobb_import_batch',
-                'nonce'           => wp_create_nonce( 'sektorel_tobb_fair_calendar' ),
-                'prepare_payload' => array( 'year' => $year, 'upcoming_only' => 1 ),
-            ),
-            array(
-                'key'             => 'jsonld',
-                'label'           => 'JSON-LD Kaynakları',
-                'description'     => 'Adapter olmayan yapılandırılmış Event verilerini adaylara işler.',
-                'prepare_action'  => 'sektorel_prepare_jsonld_scan',
-                'batch_action'    => 'sektorel_jsonld_scan_batch',
-                'nonce'           => wp_create_nonce( 'sektorel_event_candidate_jsonld' ),
-                'prepare_payload' => array(),
-            ),
-            array(
-                'key'             => 'html',
-                'label'           => 'HTML Kaynakları',
-                'description'     => 'Güvenli generic HTML kaynaklarında aday etkinlik keşfi yapar.',
-                'prepare_action'  => 'sektorel_prepare_html_event_scan',
-                'batch_action'    => 'sektorel_html_event_scan_batch',
-                'nonce'           => wp_create_nonce( 'sektorel_event_candidate_html' ),
-                'prepare_payload' => array(),
-            ),
-        );
+    private static function nonce_action_map() {
+        $map = Sektorel_Event_Source_Stage_Registry::nonce_action_map();
+        return apply_filters( 'sektorel_source_background_nonce_actions', $map );
+    }
 
-        $stages = apply_filters( 'sektorel_source_center_stages', $stages );
+    private static function refresh_stage_nonces( $run ) {
+        if ( empty( $run['stages'] ) || ! is_array( $run['stages'] ) ) return $run;
+        $map = self::nonce_action_map();
+        foreach ( $run['stages'] as $index => $stage ) {
+            if ( ! is_array( $stage ) ) continue;
+            $nonce_action = '';
+            foreach ( array( 'prepare_action', 'batch_action' ) as $key ) {
+                $action = isset( $stage[ $key ] ) ? sanitize_key( (string) $stage[ $key ] ) : '';
+                if ( $action && isset( $map[ $action ] ) ) { $nonce_action = sanitize_text_field( (string) $map[ $action ] ); break; }
+            }
+            if ( $nonce_action ) $run['stages'][ $index ]['nonce'] = wp_create_nonce( $nonce_action );
+        }
+        $run['updated_at'] = current_time( 'mysql' );
+        return $run;
+    }
+
+    private static function pipeline_stages() {
+        $stages = apply_filters( 'sektorel_source_center_stages', Sektorel_Event_Source_Stage_Registry::runtime_stages() );
         $clean = array();
         foreach ( (array) $stages as $stage ) {
             if ( empty( $stage['key'] ) || empty( $stage['label'] ) || empty( $stage['prepare_action'] ) || empty( $stage['batch_action'] ) || empty( $stage['nonce'] ) ) {

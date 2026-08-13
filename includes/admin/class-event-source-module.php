@@ -33,9 +33,6 @@ class Sektorel_Event_Source_Module {
         require_once __DIR__ . '/class-event-source-background-run.php';
         Sektorel_Event_Source_Background_Run::init();
 
-        require_once __DIR__ . '/class-event-source-background-nonce-compat.php';
-        Sektorel_Event_Source_Background_Nonce_Compat::init();
-
         require_once __DIR__ . '/class-event-source-ifm.php';
         Sektorel_Event_Source_IFM::init();
 
