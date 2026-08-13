@@ -48,6 +48,9 @@ class Sektorel_Event_Source_Module {
         require_once __DIR__ . '/class-event-candidate-inbox.php';
         Sektorel_Event_Candidate_Inbox::init();
 
+        require_once __DIR__ . '/class-event-review-queue-audit.php';
+        Sektorel_Event_Review_Queue_Audit::init();
+
         require_once __DIR__ . '/class-event-candidate-enrichment-actions.php';
         Sektorel_Event_Candidate_Enrichment_Actions::init();
 
