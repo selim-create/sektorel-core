@@ -27,51 +27,6 @@ class Sektorel_Event_Source_IFM {
     public static function init() {
         add_action( 'wp_ajax_sektorel_ifm_prepare', array( __CLASS__, 'ajax_prepare' ) );
         add_action( 'wp_ajax_sektorel_ifm_import_batch', array( __CLASS__, 'ajax_import_batch' ) );
-
-        add_filter( 'sektorel_source_center_stages', array( __CLASS__, 'register_stage' ), 20 );
-        add_filter( 'sektorel_source_background_action_map', array( __CLASS__, 'register_background_actions' ), 20 );
-        add_filter( 'sektorel_source_background_nonce_actions', array( __CLASS__, 'register_nonce_actions' ), 20 );
-    }
-
-    public static function register_stage( $stages ) {
-        $stage = array(
-            'key'             => 'ifm',
-            'label'           => 'İFM Mekan Zenginleştirme',
-            'description'     => 'İstanbul Fuar Merkezi takvimini mevcut etkinliklerle eşleştirir ve eksik mekan/salon, organizatör ve resmî site alanlarını tamamlar.',
-            'prepare_action'  => 'sektorel_ifm_prepare',
-            'batch_action'    => 'sektorel_ifm_import_batch',
-            'nonce'           => wp_create_nonce( self::NONCE_ACTION ),
-            'prepare_payload' => array(
-                'year'          => (int) current_time( 'Y' ),
-                'upcoming_only' => 1,
-            ),
-        );
-
-        $inserted = false;
-        $result   = array();
-        foreach ( (array) $stages as $existing ) {
-            $result[] = $existing;
-            if ( isset( $existing['key'] ) && 'tobb' === sanitize_key( (string) $existing['key'] ) ) {
-                $result[] = $stage;
-                $inserted = true;
-            }
-        }
-        if ( ! $inserted ) {
-            $result[] = $stage;
-        }
-        return $result;
-    }
-
-    public static function register_background_actions( $map ) {
-        $map['sektorel_ifm_prepare']      = array( __CLASS__, 'ajax_prepare' );
-        $map['sektorel_ifm_import_batch'] = array( __CLASS__, 'ajax_import_batch' );
-        return $map;
-    }
-
-    public static function register_nonce_actions( $map ) {
-        $map['sektorel_ifm_prepare']      = self::NONCE_ACTION;
-        $map['sektorel_ifm_import_batch'] = self::NONCE_ACTION;
-        return $map;
     }
 
     public static function ajax_prepare() {
