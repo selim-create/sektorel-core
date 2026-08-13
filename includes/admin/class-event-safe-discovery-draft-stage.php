@@ -5,12 +5,14 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Converts only already-triaged safe HTML discovery candidates to draft Events
- * inside Source Center after deterministic matching has completed.
+ * Converts deterministically safe discovery candidates to draft Events after
+ * matching has completed.
  *
- * This stage deliberately reuses the existing HTML safe-convert eligibility
- * contract and candidate conversion engine. It never publishes Events and it
- * excludes enrichment/canonical roles from this discovery-only path.
+ * HTML candidates keep the existing safe-triage contract. JSON-LD candidates
+ * are eligible only when the parser produced a real Event record and matcher
+ * explicitly classified the candidate as a new no-match occurrence.
+ *
+ * This stage never publishes Events and excludes canonical/enrichment roles.
  */
 class Sektorel_Event_Safe_Discovery_Draft_Stage {
 
@@ -167,9 +169,19 @@ class Sektorel_Event_Safe_Discovery_Draft_Stage {
             return new WP_Error( 'not_discovery_role', 'Kaynak rolü discovery değil.' );
         }
 
-        $safe = Sektorel_Event_HTML_Safe_Convert::eligibility( $candidate_id );
-        if ( is_wp_error( $safe ) ) {
-            return $safe;
+        $parser = sanitize_key( (string) get_post_meta( $candidate_id, 'parser_type', true ) );
+        if ( 'html' === $parser ) {
+            $safe = Sektorel_Event_HTML_Safe_Convert::eligibility( $candidate_id );
+            if ( is_wp_error( $safe ) ) {
+                return $safe;
+            }
+        } elseif ( 'jsonld' === $parser ) {
+            $safe = self::jsonld_eligibility( $candidate_id );
+            if ( is_wp_error( $safe ) ) {
+                return $safe;
+            }
+        } else {
+            return new WP_Error( 'unsupported_parser', 'Bu parser tipi güvenli discovery draft akışında değil.' );
         }
 
         $start = self::date_part( get_post_meta( $candidate_id, 'start_date', true ) );
@@ -177,6 +189,38 @@ class Sektorel_Event_Safe_Discovery_Draft_Stage {
         $last  = $end ?: $start;
         if ( $last && $last < current_time( 'Y-m-d' ) ) {
             return new WP_Error( 'past_occurrence', 'Geçmiş occurrence otomatik taslağa dönüştürülmez.' );
+        }
+
+        return true;
+    }
+
+    private static function jsonld_eligibility( $candidate_id ) {
+        $status = sanitize_key( (string) get_post_meta( $candidate_id, 'candidate_status', true ) );
+        if ( 'new' !== $status ) {
+            return new WP_Error( 'not_new', 'Yalnız new durumundaki JSON-LD adayları dönüştürülebilir.' );
+        }
+
+        if ( absint( get_post_meta( $candidate_id, 'matched_event_id', true ) ) ) {
+            return new WP_Error( 'matched_event', 'JSON-LD adayı mevcut bir etkinlikle eşleşiyor.' );
+        }
+
+        if ( absint( get_post_meta( $candidate_id, 'imported_event_id', true ) ) ) {
+            return new WP_Error( 'already_imported', 'JSON-LD adayı daha önce dönüştürülmüş.' );
+        }
+
+        $match_reason = sanitize_key( (string) get_post_meta( $candidate_id, 'candidate_match_reason', true ) );
+        if ( 'no_match' !== $match_reason ) {
+            return new WP_Error( 'match_not_clear', 'Matcher JSON-LD adayını açık şekilde yeni olarak doğrulamamış.' );
+        }
+
+        $start = self::date_part( get_post_meta( $candidate_id, 'start_date', true ) );
+        if ( ! $start ) {
+            return new WP_Error( 'missing_start', 'JSON-LD adayının başlangıç tarihi eksik.' );
+        }
+
+        $end = self::date_part( get_post_meta( $candidate_id, 'end_date', true ) );
+        if ( $end && $end < $start ) {
+            return new WP_Error( 'invalid_date_range', 'JSON-LD adayının bitiş tarihi başlangıç tarihinden önce.' );
         }
 
         return true;
