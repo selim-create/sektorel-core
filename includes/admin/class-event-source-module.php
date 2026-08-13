@@ -60,6 +60,9 @@ class Sektorel_Event_Source_Module {
         require_once __DIR__ . '/class-event-candidate-background-matcher.php';
         Sektorel_Event_Candidate_Background_Matcher::init();
 
+        require_once __DIR__ . '/class-event-review-queue-reducer.php';
+        Sektorel_Event_Review_Queue_Reducer::init();
+
         require_once __DIR__ . '/class-event-safe-discovery-draft-stage.php';
         Sektorel_Event_Safe_Discovery_Draft_Stage::init();
 
