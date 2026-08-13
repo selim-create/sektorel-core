@@ -80,29 +80,23 @@ class Sektorel_Event_Review_Queue_Audit {
         if ( ! current_user_can( 'manage_options' ) || ! self::is_source_center_page() ) {
             return;
         }
+
         $report = self::report();
-        ?>
-        <script>
-        jQuery(function($){
-            var report=<?php echo wp_json_encode( $report, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ); ?>;
-            var rows=[];
-            Object.keys(report.buckets||{}).forEach(function(key){
-                var item=report.buckets[key]||{};
-                if(Number(item.count||0)>0){
-                    rows.push('<div style="display:flex;justify-content:space-between;gap:20px;padding:7px 0;border-top:1px solid #e2e4e7;"><span>'+ $('<div>').text(item.label||key).html() +'</span><strong>'+Number(item.count||0)+'</strong></div>');
-                }
-            });
-            var card='<div class="card ssc-review-audit" style="max-width:1000px;padding:20px;margin-top:18px;">'
-                +'<h2 style="margin-top:0;">Faz 3 · Review Queue Dağılımı</h2>'
-                +'<p class="description">İnceleme kuyruğundaki <strong>'+Number(report.total||0)+'</strong> kayıt salt-okunur olarak sınıflandırıldı. Bu kart hiçbir candidate veya Event durumunu değiştirmez.</p>'
-                +'<div style="margin-top:14px;">'+rows.join('')+'</div>'
-                +'<p class="description" style="margin-bottom:0;margin-top:14px;">Bir sonraki otomasyon, en yüksek hacimli ve deterministik olarak güvenli bucket üzerinden seçilecek.</p>'
-                +'</div>';
-            var $main=$('.ssc-main').first();
-            if($main.length){ $main.after(card); }
-        });
-        </script>
-        <?php
+        echo '<div class="wrap"><div class="card ssc-review-audit" style="max-width:1000px;padding:20px;margin-top:18px;">';
+        echo '<h2 style="margin-top:0;">Faz 3 · Review Queue Dağılımı</h2>';
+        echo '<p class="description">İnceleme kuyruğundaki <strong>' . esc_html( number_format_i18n( $report['total'] ) ) . '</strong> kayıt salt-okunur olarak sınıflandırıldı. Bu kart hiçbir candidate veya Event durumunu değiştirmez.</p>';
+        echo '<div style="margin-top:14px;">';
+        foreach ( $report['buckets'] as $bucket ) {
+            if ( empty( $bucket['count'] ) ) {
+                continue;
+            }
+            echo '<div style="display:flex;justify-content:space-between;gap:20px;padding:7px 0;border-top:1px solid #e2e4e7;">';
+            echo '<span>' . esc_html( $bucket['label'] ) . '</span><strong>' . esc_html( number_format_i18n( $bucket['count'] ) ) . '</strong>';
+            echo '</div>';
+        }
+        echo '</div>';
+        echo '<p class="description" style="margin-bottom:0;margin-top:14px;">Bir sonraki otomasyon, en yüksek hacimli ve deterministik olarak güvenli bucket üzerinden seçilecek.</p>';
+        echo '</div></div>';
     }
 
     private static function reviewable_candidate_ids() {
