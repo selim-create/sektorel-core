@@ -1,0 +1,88 @@
+name: Cleanup Adapter Legacy Blocks
+
+on:
+  push:
+    branches:
+      - refactor/remove-adapter-legacy-stage-methods-1437
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: refactor/remove-adapter-legacy-stage-methods-1437
+          fetch-depth: 0
+
+      - name: Remove legacy registration blocks
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          targets = [
+              Path('includes/admin/class-event-source-ifm.php'),
+              Path('includes/admin/class-event-source-tuyap.php'),
+          ]
+
+          for path in targets:
+              text = path.read_text()
+              original = text
+
+              text = re.sub(
+                  r"\n\s*add_filter\( 'sektorel_source_center_stages'.*?\);\n"
+                  r"\s*add_filter\( 'sektorel_source_background_action_map'.*?\);\n"
+                  r"\s*add_filter\( 'sektorel_source_background_nonce_actions'.*?\);\n",
+                  "\n",
+                  text,
+                  count=1,
+              )
+
+              text, count = re.subn(
+                  r"\n    public static function register_stage\( \$stages \) \{.*?\n    public static function ajax_prepare\(\) \{",
+                  "\n    public static function ajax_prepare() {",
+                  text,
+                  count=1,
+                  flags=re.S,
+              )
+
+              if count != 1:
+                  raise SystemExit(f'{path}: registration block replacement count={count}')
+
+              forbidden = [
+                  'register_stage(',
+                  'register_background_actions(',
+                  'register_nonce_actions(',
+                  "add_filter( 'sektorel_source_center_stages'",
+                  "add_filter( 'sektorel_source_background_action_map'",
+                  "add_filter( 'sektorel_source_background_nonce_actions'",
+              ]
+              for token in forbidden:
+                  if token in text:
+                      raise SystemExit(f'{path}: legacy token still present: {token}')
+
+              if 'public static function ajax_prepare()' not in text:
+                  raise SystemExit(f'{path}: ajax_prepare missing after cleanup')
+              if text == original:
+                  raise SystemExit(f'{path}: no change made')
+
+              path.write_text(text)
+          PY
+
+      - name: Commit cleanup
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No cleanup changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add includes/admin/class-event-source-ifm.php includes/admin/class-event-source-tuyap.php
+          git commit -m "Core 1.43.7: remove adapter legacy stage registration"
+          git push origin HEAD:refactor/remove-adapter-legacy-stage-methods-1437
