@@ -5,7 +5,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Phase 3 review-queue audit.
  * Read-only diagnostics for reviewable event candidates.
  */
 class Sektorel_Event_Review_Queue_Audit {
@@ -82,9 +81,9 @@ class Sektorel_Event_Review_Queue_Audit {
         }
 
         $report = self::report();
-        echo '<div class="wrap"><div class="card ssc-review-audit" style="max-width:1000px;padding:20px;margin-top:18px;">';
-        echo '<h2 style="margin-top:0;">Faz 3 · Review Queue Dağılımı</h2>';
-        echo '<p class="description">İnceleme kuyruğundaki <strong>' . esc_html( number_format_i18n( $report['total'] ) ) . '</strong> kayıt salt-okunur olarak sınıflandırıldı. Bu kart hiçbir candidate veya Event durumunu değiştirmez.</p>';
+        echo '<div id="ssc-review-audit-card" class="card ssc-review-audit" style="max-width:1000px;padding:20px;margin-top:18px;">';
+        echo '<h2 style="margin-top:0;">İnceleme Kuyruğu Dağılımı</h2>';
+        echo '<p class="description">İnceleme kuyruğundaki <strong>' . esc_html( number_format_i18n( $report['total'] ) ) . '</strong> kayıt mevcut durumlarına göre sınıflandırıldı. Bu rapor hiçbir candidate veya Event durumunu değiştirmez.</p>';
         echo '<div style="margin-top:14px;">';
         foreach ( $report['buckets'] as $bucket ) {
             if ( empty( $bucket['count'] ) ) {
@@ -95,8 +94,22 @@ class Sektorel_Event_Review_Queue_Audit {
             echo '</div>';
         }
         echo '</div>';
-        echo '<p class="description" style="margin-bottom:0;margin-top:14px;">Bir sonraki otomasyon, en yüksek hacimli ve deterministik olarak güvenli bucket üzerinden seçilecek.</p>';
-        echo '</div></div>';
+        echo '</div>';
+        ?>
+        <script>
+        jQuery(function($){
+            var $card=$('#ssc-review-audit-card');
+            var $advanced=$('.sektorel-source-center .ssc-advanced').first();
+            var $main=$('.sektorel-source-center .ssc-main').first();
+            if(!$card.length){ return; }
+            if($advanced.length){
+                $card.insertBefore($advanced);
+            }else if($main.length){
+                $card.insertAfter($main);
+            }
+        });
+        </script>
+        <?php
     }
 
     private static function reviewable_candidate_ids() {
