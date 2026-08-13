@@ -7,14 +7,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Explicit bootstrap for the event-source ingestion module.
  *
- * Source Center infrastructure is loaded here in one place. Stage providers
- * initialize during plugin bootstrap; registry adoption is deferred until
- * WordPress init so pluggable nonce functions are available.
+ * Provider classes own parser/import behavior only. Pipeline stage metadata,
+ * callbacks, order and nonce actions are owned centrally by Stage Registry.
  */
 class Sektorel_Event_Source_Module {
 
     private static $initialized = false;
-    private static $registry_adoption_completed = false;
 
     public static function init() {
         if ( self::$initialized ) {
@@ -23,8 +21,11 @@ class Sektorel_Event_Source_Module {
 
         self::$initialized = true;
 
+        // Load the registry class early, but initialize it only after every
+        // internal provider class below is available for callback validation.
+        // Registry initialization itself does not create nonces; runtime_stages()
+        // creates fresh nonces only when Source Center/background consumers ask.
         require_once __DIR__ . '/class-event-source-stage-registry.php';
-        Sektorel_Event_Source_Stage_Registry::init();
 
         require_once __DIR__ . '/class-event-source-center-reporting.php';
         Sektorel_Event_Source_Center_Reporting::init();
@@ -65,33 +66,17 @@ class Sektorel_Event_Source_Module {
         require_once __DIR__ . '/class-event-safe-discovery-draft-stage.php';
         Sektorel_Event_Safe_Discovery_Draft_Stage::init();
 
-        // Provider registration methods generate WordPress nonces. During active
-        // plugin loading wp_create_nonce() is not guaranteed to exist yet, so
-        // adoption must not run synchronously from the plugin constructor.
-        add_action( 'init', array( __CLASS__, 'adopt_stage_registry' ), 1 );
+        // Stage Registry is now the only internal stage/action/nonce source.
+        // Provider init() methods still contain legacy hook registrations until
+        // Phase 2C.2; detach those hooks centrally after the providers load.
+        self::detach_internal_legacy_stage_filters();
+        Sektorel_Event_Source_Stage_Registry::init();
 
         require_once __DIR__ . '/class-event-pipeline-reporting-detail.php';
         Sektorel_Event_Pipeline_Reporting_Detail::init();
     }
 
-    public static function adopt_stage_registry() {
-        if ( self::$registry_adoption_completed ) {
-            return;
-        }
-
-        self::$registry_adoption_completed = true;
-
-        // Fail-closed migration: only after every internal stage provider has
-        // initialized do we adopt its legacy definitions. If any provider cannot
-        // be adopted, restore every internal legacy hook and keep the proven
-        // production path active for this request.
-        $adoption = Sektorel_Event_Source_Stage_Registry::adopt_internal_legacy_providers();
-        if ( is_wp_error( $adoption ) ) {
-            self::restore_legacy_stage_filters();
-        }
-    }
-
-    private static function restore_legacy_stage_filters() {
+    private static function detach_internal_legacy_stage_filters() {
         $providers = array(
             array( 'Sektorel_Event_Source_IFM', 20 ),
             array( 'Sektorel_Event_Source_Tuyap', 25 ),
@@ -104,15 +89,9 @@ class Sektorel_Event_Source_Module {
             $class    = $provider[0];
             $priority = $provider[1];
 
-            if ( is_callable( array( $class, 'register_stage' ) ) ) {
-                add_filter( 'sektorel_source_center_stages', array( $class, 'register_stage' ), $priority );
-            }
-            if ( is_callable( array( $class, 'register_background_actions' ) ) ) {
-                add_filter( 'sektorel_source_background_action_map', array( $class, 'register_background_actions' ), $priority );
-            }
-            if ( is_callable( array( $class, 'register_nonce_actions' ) ) ) {
-                add_filter( 'sektorel_source_background_nonce_actions', array( $class, 'register_nonce_actions' ), $priority );
-            }
+            remove_filter( 'sektorel_source_center_stages', array( $class, 'register_stage' ), $priority );
+            remove_filter( 'sektorel_source_background_action_map', array( $class, 'register_background_actions' ), $priority );
+            remove_filter( 'sektorel_source_background_nonce_actions', array( $class, 'register_nonce_actions' ), $priority );
         }
     }
 }
