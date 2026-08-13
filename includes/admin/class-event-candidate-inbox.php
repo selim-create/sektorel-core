@@ -24,7 +24,7 @@ class Sektorel_Event_Candidate_Inbox {
     }
 
     public static function archive_statuses() {
-        return array( 'imported', 'existing', 'ignored', 'rejected' );
+        return array( 'imported', 'existing', 'ignored', 'rejected', 'expired' );
     }
 
     public static function apply_default_inbox( $query ) {
@@ -65,9 +65,6 @@ class Sektorel_Event_Candidate_Inbox {
             return $views;
         }
 
-        // Candidate posts use WordPress' publish post status as a storage detail,
-        // not as an operational state. Remove those native post-status views so
-        // they cannot duplicate or contradict the candidate workflow views.
         foreach ( array( 'publish', 'mine', 'draft', 'pending', 'private', 'future' ) as $native_view ) {
             unset( $views[ $native_view ] );
         }
@@ -80,8 +77,6 @@ class Sektorel_Event_Candidate_Inbox {
 
         $base = admin_url( 'edit.php?post_type=event_candidate' );
 
-        // Replace WordPress' misleading "All" candidate-post count with the
-        // operational inbox. Keep the full history one click away.
         $views['all'] = sprintf(
             '<a href="%1$s"%2$s>İnceleme Bekleyen <span class="count">(%3$s)</span></a>',
             esc_url( add_query_arg( 'candidate_view', 'inbox', $base ) ),
