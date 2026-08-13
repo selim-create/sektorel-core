@@ -24,8 +24,6 @@ class Sektorel_Event_Source_Stage_Registry {
         self::$initialized = true;
         self::register_internal_stages();
 
-        // Backward-compatible public surfaces. Internal values always come
-        // from this registry; unknown third-party legacy stages are preserved.
         add_filter( 'sektorel_source_center_stages', array( __CLASS__, 'filter_runtime_stages' ), 9999 );
         add_filter( 'sektorel_source_background_action_map', array( __CLASS__, 'filter_action_map' ), 9999 );
         add_filter( 'sektorel_source_background_nonce_actions', array( __CLASS__, 'filter_nonce_action_map' ), 9999 );
@@ -233,6 +231,18 @@ class Sektorel_Event_Source_Stage_Registry {
                 'batch_action'     => 'sektorel_candidate_match_batch',
                 'batch_callback'   => array( 'Sektorel_Event_Candidate_Background_Matcher', 'ajax_batch' ),
                 'nonce_action'     => 'sektorel_candidate_background_matcher',
+                'prepare_payload'  => array(),
+            ),
+            array(
+                'key'              => 'review_queue_reduce',
+                'order'            => 85,
+                'label'            => 'Gürültü Adaylarını Temizle',
+                'description'      => 'Mevcut HTML triage motorunun tekrar gürültü olarak doğruladığı eşleşmemiş discovery adaylarını review kuyruğundan arşive taşır.',
+                'prepare_action'   => 'sektorel_review_queue_reduce_prepare',
+                'prepare_callback' => array( 'Sektorel_Event_Review_Queue_Reducer', 'ajax_prepare' ),
+                'batch_action'     => 'sektorel_review_queue_reduce_batch',
+                'batch_callback'   => array( 'Sektorel_Event_Review_Queue_Reducer', 'ajax_batch' ),
+                'nonce_action'     => 'sektorel_review_queue_reduce',
                 'prepare_payload'  => array(),
             ),
             array(
