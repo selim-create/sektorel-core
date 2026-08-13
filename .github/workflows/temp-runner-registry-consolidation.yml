@@ -1,0 +1,145 @@
+name: Temp Runner Registry Consolidation
+
+on:
+  push:
+    branches:
+      - refactor/background-runner-registry-consolidation-1439
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/background-runner-registry-consolidation-1439
+          fetch-depth: 0
+
+      - name: Consolidate runner registry and nonce flow
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          runner = Path('includes/admin/class-event-source-background-run.php')
+          s = runner.read_text()
+
+          old = "            wp_set_current_user( absint( $run['user_id'] ) );\n            $run['status']     = 'running';"
+          new = "            wp_set_current_user( absint( $run['user_id'] ) );\n            $run = self::refresh_stage_nonces( $run );\n            self::save_run( $run );\n            $run['status']     = 'running';"
+          if s.count(old) != 1:
+              raise SystemExit(f'process_tick insertion point count={s.count(old)}')
+          s = s.replace(old, new, 1)
+
+          action_pattern = re.compile(r"\n    private static function action_map\(\) \{.*?\n    private static function pipeline_stages\(\) \{", re.S)
+          replacement = r'''
+    private static function action_map() {
+        $map = Sektorel_Event_Source_Stage_Registry::action_map();
+        return apply_filters( 'sektorel_source_background_action_map', $map );
+    }
+
+    private static function nonce_action_map() {
+        $map = Sektorel_Event_Source_Stage_Registry::nonce_action_map();
+        return apply_filters( 'sektorel_source_background_nonce_actions', $map );
+    }
+
+    private static function refresh_stage_nonces( $run ) {
+        if ( empty( $run['stages'] ) || ! is_array( $run['stages'] ) ) {
+            return $run;
+        }
+
+        $map = self::nonce_action_map();
+        foreach ( $run['stages'] as $index => $stage ) {
+            if ( ! is_array( $stage ) ) {
+                continue;
+            }
+
+            $nonce_action = '';
+            foreach ( array( 'prepare_action', 'batch_action' ) as $key ) {
+                $action = isset( $stage[ $key ] ) ? sanitize_key( (string) $stage[ $key ] ) : '';
+                if ( $action && isset( $map[ $action ] ) ) {
+                    $nonce_action = sanitize_text_field( (string) $map[ $action ] );
+                    break;
+                }
+            }
+
+            if ( $nonce_action ) {
+                $run['stages'][ $index ]['nonce'] = wp_create_nonce( $nonce_action );
+            }
+        }
+
+        $run['updated_at'] = current_time( 'mysql' );
+        return $run;
+    }
+
+    private static function pipeline_stages() {'''
+          s, n = action_pattern.subn(replacement, s, count=1)
+          if n != 1:
+              raise SystemExit(f'action_map replacement count={n}')
+
+          pipeline_pattern = re.compile(
+              r"    private static function pipeline_stages\(\) \{\n        \$year = .*?\n        \$stages = array\(.*?\n        \$stages = apply_filters\( 'sektorel_source_center_stages', \$stages \);",
+              re.S,
+          )
+          pipeline_replacement = "    private static function pipeline_stages() {\n        $stages = apply_filters( 'sektorel_source_center_stages', Sektorel_Event_Source_Stage_Registry::runtime_stages() );"
+          s, n = pipeline_pattern.subn(pipeline_replacement, s, count=1)
+          if n != 1:
+              raise SystemExit(f'pipeline registry replacement count={n}')
+
+          forbidden = [
+              "'sektorel_event_source_prepare_checks' => array( 'Sektorel_Event_Source_Checker'",
+              "$year = (int) current_time( 'Y' );",
+          ]
+          for token in forbidden:
+              if token in s:
+                  raise SystemExit(f'duplicate runner registry token still present: {token}')
+
+          required = [
+              'private static function refresh_stage_nonces( $run )',
+              'Sektorel_Event_Source_Stage_Registry::action_map()',
+              'Sektorel_Event_Source_Stage_Registry::nonce_action_map()',
+              'Sektorel_Event_Source_Stage_Registry::runtime_stages()',
+          ]
+          for token in required:
+              if token not in s:
+                  raise SystemExit(f'missing required token: {token}')
+
+          runner.write_text(s)
+
+          module = Path('includes/admin/class-event-source-module.php')
+          m = module.read_text()
+          old_block = "        require_once __DIR__ . '/class-event-source-background-nonce-compat.php';\n        Sektorel_Event_Source_Background_Nonce_Compat::init();\n\n"
+          if m.count(old_block) != 1:
+              raise SystemExit(f'nonce compat module block count={m.count(old_block)}')
+          module.write_text(m.replace(old_block, '', 1))
+
+          compat = Path('includes/admin/class-event-source-background-nonce-compat.php')
+          if not compat.exists():
+              raise SystemExit('nonce compat file missing before cleanup')
+          compat.unlink()
+
+          core = Path('sektorel-core.php')
+          c = core.read_text()
+          old_version = ' * Version: 1.43.8'
+          new_version = ' * Version: 1.43.9'
+          if c.count(old_version) != 1:
+              raise SystemExit(f'old version count={c.count(old_version)}')
+          core.write_text(c.replace(old_version, new_version, 1))
+          PY
+
+      - name: Lint touched PHP
+        run: |
+          php -l includes/admin/class-event-source-background-run.php
+          php -l includes/admin/class-event-source-module.php
+          php -l sektorel-core.php
+
+      - name: Commit refactor
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Core 1.43.9: consolidate background runner registry and nonce flow"
+          git push origin HEAD:refactor/background-runner-registry-consolidation-1439
