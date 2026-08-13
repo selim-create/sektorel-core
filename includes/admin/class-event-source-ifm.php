@@ -192,6 +192,18 @@ class Sektorel_Event_Source_IFM {
             'no_found_rows'  => true,
         ) );
 
+        if ( empty( $existing ) && ! empty( $record['detail_url'] ) ) {
+            $existing = get_posts( array(
+                'post_type'      => 'event_candidate',
+                'post_status'    => 'any',
+                'posts_per_page' => 1,
+                'fields'         => 'ids',
+                'meta_key'       => 'ifm_detail_url',
+                'meta_value'     => esc_url_raw( $record['detail_url'] ),
+                'no_found_rows'  => true,
+            ) );
+        }
+
         $candidate_id = ! empty( $existing[0] ) ? absint( $existing[0] ) : 0;
         $record_hash  = sha1( wp_json_encode( array(
             $record['title'],
@@ -436,7 +448,7 @@ class Sektorel_Event_Source_IFM {
         }
 
         $xpath = new DOMXPath( $dom );
-        $title = self::first_text( $xpath, array( '//h1', '//main//h2[1]', '//h2[1]' ) );
+        $title = self::first_text( $xpath, array( '//h4[1]', '//h1', '//main//h2[1]', '//h2[1]' ) );
         if ( ! $title ) {
             $title = trim( (string) $dom->getElementsByTagName( 'title' )->item(0)->textContent );
             $title = preg_replace( '/\s*\|\s*İFM.*$/u', '', $title );
