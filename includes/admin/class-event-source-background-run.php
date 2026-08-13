@@ -665,7 +665,7 @@ class Sektorel_Event_Source_Background_Run {
         );
     }
 
-    private static function render_source_center_script() {
+    public static function render_source_center_script() {
         if ( ! self::is_source_center_page() || ! current_user_can( 'manage_options' ) ) {
             return;
         }
