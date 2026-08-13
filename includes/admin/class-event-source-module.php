@@ -21,10 +21,6 @@ class Sektorel_Event_Source_Module {
 
         self::$initialized = true;
 
-        // Load the registry class early, but initialize it only after every
-        // internal provider class below is available for callback validation.
-        // Registry initialization itself does not create nonces; runtime_stages()
-        // creates fresh nonces only when Source Center/background consumers ask.
         require_once __DIR__ . '/class-event-source-stage-registry.php';
 
         require_once __DIR__ . '/class-event-source-center-reporting.php';
@@ -60,14 +56,14 @@ class Sektorel_Event_Source_Module {
         require_once __DIR__ . '/class-event-candidate-background-matcher.php';
         Sektorel_Event_Candidate_Background_Matcher::init();
 
+        require_once __DIR__ . '/class-event-review-expiry.php';
+
         require_once __DIR__ . '/class-event-review-queue-reducer.php';
         Sektorel_Event_Review_Queue_Reducer::init();
 
         require_once __DIR__ . '/class-event-safe-discovery-draft-stage.php';
         Sektorel_Event_Safe_Discovery_Draft_Stage::init();
 
-        // All internal stage providers now expose only parser/AJAX behavior.
-        // Stage Registry is the sole internal stage/action/nonce source.
         Sektorel_Event_Source_Stage_Registry::init();
 
         require_once __DIR__ . '/class-event-pipeline-reporting-detail.php';
