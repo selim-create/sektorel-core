@@ -24,7 +24,7 @@ class Sektorel_Event_Official_Calendar_Stage {
 
     const GIB_SOURCE = 'https://www.gib.gov.tr/vergi-takvimi';
     const SGK_SOURCE = 'https://sgk.gov.tr/Content/Post/1f3a8bec-bca6-4e83-8e5c-f957a7d28af4/Isverenlerin-Prim-Odeme-Islemleri-2025-02-06-03-29-17';
-    const TRADE_COMPANY_SOURCE = 'https://ticaret.gov.tr/ic-ticaret/sirketler/sirket-bilgiler';
+    const TRADE_COMPANY_SOURCE = 'https://icticaret.ticaret.gov.tr/haberler/sirketlerin-genel-kurul-toplantilarina-iliskin-aciklama';
     const TRADE_BOOK_SOURCE = 'https://ticaret.gov.tr/basin-merkezi/basin-aciklamalari/gumruk-ve-ticaret-bakani-hayati-yazici-ticaret-sicili-tasdiknamesi-uygulamasina-iliskin-aciklamalara-i%CC%87liskin-basin-aciklamasi-20-aralik-2013';
     const TRADE_JOURNAL_SOURCE = 'https://ticaret.gov.tr/haberler/bakan-yazicidan-tacirlere-yevmiye-defteri-uyarisi';
 
@@ -314,8 +314,15 @@ class Sektorel_Event_Official_Calendar_Stage {
             $period = sprintf( '%04d-%02d', $year, $month );
             $next_y = $month === 12 ? $year + 1 : $year;
             $next_m = $month === 12 ? 1 : $month + 1;
-            $last   = cal_days_in_month( CAL_GREGORIAN, $next_m, $next_y );
-            $due    = self::roll_weekend_forward( sprintf( '%04d-%02d-%02d', $next_y, $next_m, $last ) );
+
+            try {
+                $month_start = new DateTimeImmutable( sprintf( '%04d-%02d-01', $next_y, $next_m ), wp_timezone() );
+                $month_end   = $month_start->modify( 'last day of this month' )->format( 'Y-m-d' );
+            } catch ( Exception $e ) {
+                continue;
+            }
+
+            $due = self::roll_weekend_forward( $month_end );
 
             $rows[] = self::row(
                 'sgk:4a-employer-premium:' . $period,
@@ -408,7 +415,12 @@ class Sektorel_Event_Official_Calendar_Stage {
             return new WP_Error( 'official_due_date_invalid', 'Resmî takvim tarihi geçersiz.' );
         }
 
-        $event_id = self::find_event_id( $row['occurrence_key'] );
+        $event_lookup = self::find_event_id( $row['occurrence_key'] );
+        if ( is_wp_error( $event_lookup ) ) {
+            return $event_lookup;
+        }
+
+        $event_id = absint( $event_lookup );
         $created  = false;
 
         if ( ! $event_id ) {
@@ -449,23 +461,23 @@ class Sektorel_Event_Official_Calendar_Stage {
 
         $date_value = $row['due_date'] . 'T23:59';
         $meta = array(
-            'is_official'                     => 1,
-            'event_type'                      => 'resmi',
-            'start_date'                      => $date_value,
-            'end_date'                        => $date_value,
-            'organizer'                       => $row['institution'],
-            'event_url'                       => $row['source_url'],
-            'source_url'                      => $row['source_url'],
-            'official_category'               => $row['category'],
-            'official_institution'            => $row['institution'],
-            'official_source_url'             => $row['source_url'],
-            'official_applicability'           => $row['applicability'],
-            'official_rule_key'               => $row['rule_key'],
-            'official_occurrence_key'         => $row['occurrence_key'],
-            'official_period'                 => $row['period'],
-            'official_date_basis'             => $row['date_basis'],
-            'official_calendar_managed'       => 1,
-            'official_calendar_engine_version'=> self::VERSION,
+            'is_official'                      => 1,
+            'event_type'                       => 'resmi',
+            'start_date'                       => $date_value,
+            'end_date'                         => $date_value,
+            'organizer'                        => $row['institution'],
+            'event_url'                        => $row['source_url'],
+            'source_url'                       => $row['source_url'],
+            'official_category'                => $row['category'],
+            'official_institution'             => $row['institution'],
+            'official_source_url'              => $row['source_url'],
+            'official_applicability'            => $row['applicability'],
+            'official_rule_key'                => $row['rule_key'],
+            'official_occurrence_key'          => $row['occurrence_key'],
+            'official_period'                  => $row['period'],
+            'official_date_basis'              => $row['date_basis'],
+            'official_calendar_managed'        => 1,
+            'official_calendar_engine_version' => self::VERSION,
         );
 
         foreach ( $meta as $key => $value ) {
@@ -501,7 +513,7 @@ class Sektorel_Event_Official_Calendar_Stage {
         ) );
 
         if ( count( $ids ) > 1 ) {
-            return 0;
+            return new WP_Error( 'official_duplicate_occurrence_key', 'Aynı resmî occurrence anahtarıyla birden fazla Event bulundu; yeni duplicate oluşturulmadı.' );
         }
 
         return $ids ? absint( $ids[0] ) : 0;
