@@ -41,6 +41,9 @@ class Sektorel_Event_Source_Module {
         require_once __DIR__ . '/class-event-canonical-draft-stage.php';
         Sektorel_Event_Canonical_Draft_Stage::init();
 
+        require_once __DIR__ . '/class-event-source-trusted-discovery.php';
+        Sektorel_Event_Source_Trusted_Discovery::init();
+
         require_once __DIR__ . '/class-event-candidate-inbox.php';
         Sektorel_Event_Candidate_Inbox::init();
 
