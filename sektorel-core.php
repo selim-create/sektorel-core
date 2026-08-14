@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Sektorel Core
  * Description: Sektörel Ajanda projesi için CPT, Taxonomy ve API tanımlarını içeren çekirdek eklenti.
- * Version: 1.48.0
+ * Version: 1.48.1
  * Author: Sektörel Ajanda Dev Team
  * Text Domain: sektorel-core
  */
