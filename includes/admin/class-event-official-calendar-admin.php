@@ -18,14 +18,7 @@ class Sektorel_Event_Official_Calendar_Admin {
     }
 
     public static function add_meta_boxes() {
-        add_meta_box(
-            'sektorel_official_calendar_scope',
-            'Resmî Takvim Kapsamı',
-            array( __CLASS__, 'render_meta_box' ),
-            'event',
-            'side',
-            'default'
-        );
+        add_meta_box( 'sektorel_official_calendar_scope', 'Resmî Takvim Kapsamı', array( __CLASS__, 'render_meta_box' ), 'event', 'side', 'default' );
     }
 
     public static function render_meta_box( $post ) {
@@ -46,7 +39,6 @@ class Sektorel_Event_Official_Calendar_Admin {
         if ( $managed ) {
             echo '<p><strong>Takvim semantiği:</strong><br>Gün boyu son tarih / deadline</p>';
         }
-
         if ( $scope ) {
             echo '<p><strong>Kimleri ilgilendiriyor?</strong></p><ul style="list-style:disc;padding-left:18px;">';
             foreach ( $scope as $key ) {
@@ -54,7 +46,6 @@ class Sektorel_Event_Official_Calendar_Admin {
             }
             echo '</ul>';
         }
-
         if ( $rule ) {
             echo '<p><strong>Kural:</strong><br><code>' . esc_html( $rule ) . '</code></p>';
         }
@@ -67,15 +58,12 @@ class Sektorel_Event_Official_Calendar_Admin {
         if ( $source ) {
             echo '<p><a href="' . $source . '" target="_blank" rel="noopener noreferrer">Resmî kaynağı aç</a></p>';
         }
-
-        echo '<p class="description">Bu alanlar Kaynak Merkezi → Resmî Takvimi Güncelle aşaması tarafından yönetilir.</p>';
+        echo '<p class="description">Bu alanlar Kaynak Merkezi → Resmî Takvim aşamaları tarafından yönetilir.</p>';
     }
 
     public static function admin_footer() {
         global $post;
-        if ( ! $post || 'event' !== get_post_type( $post ) ) {
-            return;
-        }
+        if ( ! $post || 'event' !== get_post_type( $post ) ) { return; }
         ?>
         <script>
         jQuery(function($){
@@ -83,9 +71,7 @@ class Sektorel_Event_Official_Calendar_Admin {
             if ($official.length) {
                 var $label = $official.closest('label');
                 $label.contents().filter(function(){ return this.nodeType === 3; }).each(function(){
-                    if (this.nodeValue.indexOf('Resmî Takvim Etkinliği') !== -1) {
-                        this.nodeValue = ' Resmî Takvim Etkinliği';
-                    }
+                    if (this.nodeValue.indexOf('Resmî Takvim Etkinliği') !== -1) { this.nodeValue = ' Resmî Takvim Etkinliği'; }
                 });
             }
         });
@@ -95,60 +81,46 @@ class Sektorel_Event_Official_Calendar_Admin {
 
     public static function register_graphql_fields() {
         register_graphql_field( 'Event', 'officialApplicability', array(
-            'type'    => array( 'list_of' => 'String' ),
-            'resolve' => static function ( $post ) {
-                $value = get_post_meta( $post->ID, 'official_applicability', true );
-                return is_array( $value ) ? array_values( array_map( 'strval', $value ) ) : array();
-            },
+            'type' => array( 'list_of' => 'String' ),
+            'resolve' => static function ( $post ) { $value = get_post_meta( $post->ID, 'official_applicability', true ); return is_array( $value ) ? array_values( array_map( 'strval', $value ) ) : array(); },
         ) );
-        register_graphql_field( 'Event', 'officialRuleKey', array(
-            'type'    => 'String',
-            'resolve' => static function ( $post ) { return (string) get_post_meta( $post->ID, 'official_rule_key', true ); },
-        ) );
-        register_graphql_field( 'Event', 'officialPeriod', array(
-            'type'    => 'String',
-            'resolve' => static function ( $post ) { return (string) get_post_meta( $post->ID, 'official_period', true ); },
-        ) );
-        register_graphql_field( 'Event', 'officialDateBasis', array(
-            'type'    => 'String',
-            'resolve' => static function ( $post ) { return (string) get_post_meta( $post->ID, 'official_date_basis', true ); },
-        ) );
-        register_graphql_field( 'Event', 'officialIsAllDay', array(
-            'type'    => 'Boolean',
-            'resolve' => static function ( $post ) {
-                return '1' === (string) get_post_meta( $post->ID, 'is_official', true )
-                    && '1' === (string) get_post_meta( $post->ID, 'official_calendar_managed', true );
-            },
-        ) );
-        register_graphql_field( 'Event', 'officialIsDeadline', array(
-            'type'    => 'Boolean',
-            'resolve' => static function ( $post ) {
-                return '1' === (string) get_post_meta( $post->ID, 'is_official', true )
-                    && '1' === (string) get_post_meta( $post->ID, 'official_calendar_managed', true );
-            },
-        ) );
+        register_graphql_field( 'Event', 'officialRuleKey', array( 'type' => 'String', 'resolve' => static function ( $post ) { return (string) get_post_meta( $post->ID, 'official_rule_key', true ); } ) );
+        register_graphql_field( 'Event', 'officialPeriod', array( 'type' => 'String', 'resolve' => static function ( $post ) { return (string) get_post_meta( $post->ID, 'official_period', true ); } ) );
+        register_graphql_field( 'Event', 'officialDateBasis', array( 'type' => 'String', 'resolve' => static function ( $post ) { return (string) get_post_meta( $post->ID, 'official_date_basis', true ); } ) );
+        register_graphql_field( 'Event', 'officialIsAllDay', array( 'type' => 'Boolean', 'resolve' => static function ( $post ) { return '1' === (string) get_post_meta( $post->ID, 'is_official', true ) && '1' === (string) get_post_meta( $post->ID, 'official_calendar_managed', true ); } ) );
+        register_graphql_field( 'Event', 'officialIsDeadline', array( 'type' => 'Boolean', 'resolve' => static function ( $post ) { return '1' === (string) get_post_meta( $post->ID, 'is_official', true ) && '1' === (string) get_post_meta( $post->ID, 'official_calendar_managed', true ); } ) );
     }
 
     private static function applicability_label( $key ) {
         $labels = array(
-            'all_companies'              => 'Tüm şirketler',
-            'corporate_taxpayer'         => 'Kurumlar vergisi mükellefleri',
-            'vat_taxpayer'               => 'KDV mükellefleri',
-            'withholding_taxpayer'       => 'Tevkifat / stopaj mükellefleri',
-            'employer'                   => 'Çalışanı olan işverenler',
-            'e_ledger_user'              => 'e-Defter kullanıcıları',
-            'joint_stock_company'        => 'Anonim şirketler',
-            'limited_company'            => 'Limited şirketler',
-            'physical_commercial_books'  => 'Fiziki ticari defter kullananlar',
+            'all_companies'                             => 'Tüm şirketler',
+            'corporate_taxpayer'                        => 'Kurumlar vergisi mükellefleri',
+            'vat_taxpayer'                              => 'KDV mükellefleri',
+            'withholding_taxpayer'                      => 'Tevkifat / stopaj mükellefleri',
+            'employer'                                  => 'Çalışanı olan işverenler',
+            'e_ledger_user'                             => 'e-Defter kullanıcıları',
+            'joint_stock_company'                       => 'Anonim şirketler',
+            'limited_company'                           => 'Limited şirketler',
+            'physical_commercial_books'                 => 'Fiziki ticari defter kullananlar',
+            'waste_producer'                            => 'Atık üreticileri',
+            'epdk_generation_license_under_construction'=> 'Tesisi tamamlanmamış EPDK üretim lisansı sahipleri',
+            'epdk_generation_license_fee_payer'         => 'Yıllık lisans bedeli ödeyen EPDK üretim lisansı sahipleri',
+            'spk_public_company_non_exchange'           => 'Payları borsada işlem görmeyen halka açık ortaklıklar',
+            'verbis_registered_data_controller'         => 'VERBİS kayıt yükümlüsü veri sorumluları',
+            'data_controller'                           => 'Veri sorumluları',
         );
         return isset( $labels[ $key ] ) ? $labels[ $key ] : $key;
     }
 
     private static function basis_label( $basis ) {
         $labels = array(
-            'verified_gib_2026_calendar' => 'GİB 2026 Vergi Takvimi — doğrulanmış yıllık tarih',
-            'sgk_statutory_rule'         => 'SGK resmî ödeme kuralından üretilen tarih',
-            'trade_statutory_rule'       => 'Ticaret Bakanlığı / TTK kuralından üretilen tarih',
+            'verified_gib_2026_calendar'          => 'GİB 2026 Vergi Takvimi — doğrulanmış yıllık tarih',
+            'sgk_statutory_rule'                  => 'SGK resmî ödeme kuralından üretilen tarih',
+            'trade_statutory_rule'                => 'Ticaret Bakanlığı / TTK kuralından üretilen tarih',
+            'csb_tabs_statutory_rule'              => 'Çevre Bakanlığı TABS yıllık bildirim kuralından üretilen tarih',
+            'epdk_statutory_month_rule'            => 'EPDK resmî raporlama ayı kuralından üretilen tarih',
+            'verified_epdk_2026_business_days'     => 'EPDK 2026 ilk beş iş günü kuralına göre doğrulanmış tarih',
+            'spk_statutory_rule'                   => 'SPK resmî finansal raporlama kuralından üretilen tarih',
         );
         return isset( $labels[ $basis ] ) ? $labels[ $basis ] : $basis;
     }
