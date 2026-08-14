@@ -41,6 +41,21 @@ class Sektorel_Event_Source_Module {
         require_once __DIR__ . '/class-event-canonical-draft-stage.php';
         Sektorel_Event_Canonical_Draft_Stage::init();
 
+        require_once __DIR__ . '/class-event-source-trusted-discovery.php';
+        Sektorel_Event_Source_Trusted_Discovery::init();
+        Sektorel_Event_Source_Stage_Registry::register( array(
+            'key'              => 'trusted_discovery',
+            'order'            => 55,
+            'label'            => 'Güvenilir Kaynak Keşfi',
+            'description'      => 'Webrazzi ve TEKNOFEST resmî etkinlik sayfalarını kaynağa özel deterministic adapterlarla tarar.',
+            'prepare_action'   => 'sektorel_trusted_discovery_prepare',
+            'prepare_callback' => array( 'Sektorel_Event_Source_Trusted_Discovery', 'ajax_prepare' ),
+            'batch_action'     => 'sektorel_trusted_discovery_batch',
+            'batch_callback'   => array( 'Sektorel_Event_Source_Trusted_Discovery', 'ajax_batch' ),
+            'nonce_action'     => Sektorel_Event_Source_Trusted_Discovery::NONCE_ACTION,
+            'prepare_payload'  => array( __CLASS__, 'trusted_discovery_payload' ),
+        ) );
+
         require_once __DIR__ . '/class-event-candidate-inbox.php';
         Sektorel_Event_Candidate_Inbox::init();
 
@@ -71,5 +86,9 @@ class Sektorel_Event_Source_Module {
 
         require_once __DIR__ . '/class-event-pipeline-reporting-detail.php';
         Sektorel_Event_Pipeline_Reporting_Detail::init();
+    }
+
+    public static function trusted_discovery_payload() {
+        return array( 'year' => (int) current_time( 'Y' ) );
     }
 }
