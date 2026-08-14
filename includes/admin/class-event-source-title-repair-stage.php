@@ -177,7 +177,7 @@ class Sektorel_Event_Source_Title_Repair_Stage {
         if ( '' === $old_title || self::normalize_title( $old_title ) === self::normalize_title( $title ) ) {
             return false;
         }
-        if ( ! self::current_title_is_repairable( $host, $old_title, $year ) ) {
+        if ( ! self::current_title_is_repairable( $host, $old_title ) ) {
             return false;
         }
 
@@ -270,11 +270,8 @@ class Sektorel_Event_Source_Title_Repair_Stage {
         return false;
     }
 
-    private static function current_title_is_repairable( $host, $title, $year ) {
+    private static function current_title_is_repairable( $host, $title ) {
         $normalized = self::normalize_title( $title );
-        if ( preg_match( '/\b20\d{2}\b/', $normalized, $match ) && $match[0] !== $year ) {
-            return true;
-        }
         if ( false !== strpos( $host, 'icci.com.tr' ) ) {
             return (bool) preg_match( '/bulusma noktasi|meeting point/i', $normalized );
         }
