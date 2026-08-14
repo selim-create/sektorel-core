@@ -31,6 +31,10 @@ class Sektorel_Event_Source_Module {
 
         require_once __DIR__ . '/class-event-official-calendar-stage.php';
         Sektorel_Event_Official_Calendar_Stage::init();
+
+        require_once __DIR__ . '/class-event-official-calendar-admin.php';
+        Sektorel_Event_Official_Calendar_Admin::init();
+
         Sektorel_Event_Source_Stage_Registry::register( array(
             'key'              => 'official_calendar',
             'order'            => 15,
