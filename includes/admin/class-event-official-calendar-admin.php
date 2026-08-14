@@ -14,6 +14,7 @@ class Sektorel_Event_Official_Calendar_Admin {
     public static function init() {
         add_action( 'add_meta_boxes', array( __CLASS__, 'add_meta_boxes' ), 110 );
         add_action( 'graphql_register_types', array( __CLASS__, 'register_graphql_fields' ), 30 );
+        add_action( 'admin_footer', array( __CLASS__, 'admin_footer' ), 130 );
     }
 
     public static function add_meta_boxes() {
@@ -42,6 +43,9 @@ class Sektorel_Event_Official_Calendar_Admin {
         $source  = esc_url( (string) get_post_meta( $post->ID, 'official_source_url', true ) );
 
         echo '<p><strong>' . esc_html( $managed ? 'Otomatik yönetilen kayıt' : 'Manuel resmî kayıt' ) . '</strong></p>';
+        if ( $managed ) {
+            echo '<p><strong>Takvim semantiği:</strong><br>Gün boyu son tarih / deadline</p>';
+        }
 
         if ( $scope ) {
             echo '<p><strong>Kimleri ilgilendiriyor?</strong></p><ul style="list-style:disc;padding-left:18px;">';
@@ -67,6 +71,28 @@ class Sektorel_Event_Official_Calendar_Admin {
         echo '<p class="description">Bu alanlar Kaynak Merkezi → Resmî Takvimi Güncelle aşaması tarafından yönetilir.</p>';
     }
 
+    public static function admin_footer() {
+        global $post;
+        if ( ! $post || 'event' !== get_post_type( $post ) ) {
+            return;
+        }
+        ?>
+        <script>
+        jQuery(function($){
+            var $official = $('#is_official');
+            if ($official.length) {
+                var $label = $official.closest('label');
+                $label.contents().filter(function(){ return this.nodeType === 3; }).each(function(){
+                    if (this.nodeValue.indexOf('Resmî Takvim Etkinliği') !== -1) {
+                        this.nodeValue = ' Resmî Takvim Etkinliği';
+                    }
+                });
+            }
+        });
+        </script>
+        <?php
+    }
+
     public static function register_graphql_fields() {
         register_graphql_field( 'Event', 'officialApplicability', array(
             'type'    => array( 'list_of' => 'String' ),
@@ -86,6 +112,20 @@ class Sektorel_Event_Official_Calendar_Admin {
         register_graphql_field( 'Event', 'officialDateBasis', array(
             'type'    => 'String',
             'resolve' => static function ( $post ) { return (string) get_post_meta( $post->ID, 'official_date_basis', true ); },
+        ) );
+        register_graphql_field( 'Event', 'officialIsAllDay', array(
+            'type'    => 'Boolean',
+            'resolve' => static function ( $post ) {
+                return '1' === (string) get_post_meta( $post->ID, 'is_official', true )
+                    && '1' === (string) get_post_meta( $post->ID, 'official_calendar_managed', true );
+            },
+        ) );
+        register_graphql_field( 'Event', 'officialIsDeadline', array(
+            'type'    => 'Boolean',
+            'resolve' => static function ( $post ) {
+                return '1' === (string) get_post_meta( $post->ID, 'is_official', true )
+                    && '1' === (string) get_post_meta( $post->ID, 'official_calendar_managed', true );
+            },
         ) );
     }
 
