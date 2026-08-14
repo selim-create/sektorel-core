@@ -8,9 +8,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Converts deterministically safe discovery candidates to draft Events after
  * matching has completed.
  *
- * HTML candidates keep the existing safe-triage contract. JSON-LD candidates
- * are eligible only when the parser produced a real Event record and matcher
- * explicitly classified the candidate as a new no-match occurrence.
+ * HTML candidates keep the existing safe-triage contract. JSON-LD and trusted
+ * source-specific adapter candidates are eligible only when matcher explicitly
+ * classified the candidate as a new no-match occurrence.
  *
  * This stage never publishes Events and excludes canonical/enrichment roles.
  */
@@ -180,6 +180,11 @@ class Sektorel_Event_Safe_Discovery_Draft_Stage {
             if ( is_wp_error( $safe ) ) {
                 return $safe;
             }
+        } elseif ( 'adapter' === $parser ) {
+            $safe = self::trusted_adapter_eligibility( $candidate_id );
+            if ( is_wp_error( $safe ) ) {
+                return $safe;
+            }
         } else {
             return new WP_Error( 'unsupported_parser', 'Bu parser tipi güvenli discovery draft akışında değil.' );
         }
@@ -195,32 +200,57 @@ class Sektorel_Event_Safe_Discovery_Draft_Stage {
     }
 
     private static function jsonld_eligibility( $candidate_id ) {
+        return self::new_unmatched_eligibility( $candidate_id, 'JSON-LD' );
+    }
+
+    private static function trusted_adapter_eligibility( $candidate_id ) {
+        $adapter = sanitize_key( (string) get_post_meta( $candidate_id, 'source_adapter', true ) );
+        if ( ! in_array( $adapter, array( 'webrazzi_events', 'teknofest_events' ), true ) ) {
+            return new WP_Error( 'untrusted_adapter', 'Adapter güvenli discovery allowlist içinde değil.' );
+        }
+
+        $safe = self::new_unmatched_eligibility( $candidate_id, 'Trusted adapter' );
+        if ( is_wp_error( $safe ) ) {
+            return $safe;
+        }
+
+        $start = self::date_part( get_post_meta( $candidate_id, 'start_date', true ) );
+        $year  = $start ? substr( $start, 0, 4 ) : '';
+        $title = (string) get_the_title( $candidate_id );
+        if ( ! $year || false === strpos( $title, $year ) ) {
+            return new WP_Error( 'adapter_occurrence_identity', 'Trusted adapter başlığı occurrence yılını doğrulamıyor.' );
+        }
+
+        return true;
+    }
+
+    private static function new_unmatched_eligibility( $candidate_id, $label ) {
         $status = sanitize_key( (string) get_post_meta( $candidate_id, 'candidate_status', true ) );
         if ( 'new' !== $status ) {
-            return new WP_Error( 'not_new', 'Yalnız new durumundaki JSON-LD adayları dönüştürülebilir.' );
+            return new WP_Error( 'not_new', 'Yalnız new durumundaki ' . $label . ' adayları dönüştürülebilir.' );
         }
 
         if ( absint( get_post_meta( $candidate_id, 'matched_event_id', true ) ) ) {
-            return new WP_Error( 'matched_event', 'JSON-LD adayı mevcut bir etkinlikle eşleşiyor.' );
+            return new WP_Error( 'matched_event', $label . ' adayı mevcut bir etkinlikle eşleşiyor.' );
         }
 
         if ( absint( get_post_meta( $candidate_id, 'imported_event_id', true ) ) ) {
-            return new WP_Error( 'already_imported', 'JSON-LD adayı daha önce dönüştürülmüş.' );
+            return new WP_Error( 'already_imported', $label . ' adayı daha önce dönüştürülmüş.' );
         }
 
         $match_reason = sanitize_key( (string) get_post_meta( $candidate_id, 'candidate_match_reason', true ) );
         if ( 'no_match' !== $match_reason ) {
-            return new WP_Error( 'match_not_clear', 'Matcher JSON-LD adayını açık şekilde yeni olarak doğrulamamış.' );
+            return new WP_Error( 'match_not_clear', 'Matcher ' . $label . ' adayını açık şekilde yeni olarak doğrulamamış.' );
         }
 
         $start = self::date_part( get_post_meta( $candidate_id, 'start_date', true ) );
         if ( ! $start ) {
-            return new WP_Error( 'missing_start', 'JSON-LD adayının başlangıç tarihi eksik.' );
+            return new WP_Error( 'missing_start', $label . ' adayının başlangıç tarihi eksik.' );
         }
 
         $end = self::date_part( get_post_meta( $candidate_id, 'end_date', true ) );
         if ( $end && $end < $start ) {
-            return new WP_Error( 'invalid_date_range', 'JSON-LD adayının bitiş tarihi başlangıç tarihinden önce.' );
+            return new WP_Error( 'invalid_date_range', $label . ' adayının bitiş tarihi başlangıç tarihinden önce.' );
         }
 
         return true;
