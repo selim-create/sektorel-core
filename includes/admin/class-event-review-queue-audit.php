@@ -9,8 +9,11 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Sektorel_Event_Review_Queue_Audit {
 
+    const NONCE_ACTION = 'sektorel_review_queue_audit_report';
+
     public static function init() {
         add_action( 'admin_footer', array( __CLASS__, 'render_source_center_card' ), 135 );
+        add_action( 'wp_ajax_sektorel_review_queue_audit_report', array( __CLASS__, 'ajax_report' ) );
     }
 
     public static function report() {
@@ -75,25 +78,30 @@ class Sektorel_Event_Review_Queue_Audit {
         );
     }
 
+    public static function ajax_report() {
+        check_ajax_referer( self::NONCE_ACTION, 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( array( 'message' => 'Yetkisiz işlem.' ), 403 );
+        }
+
+        $report = self::report();
+        wp_send_json_success( array(
+            'total' => absint( $report['total'] ),
+            'rows'  => self::bucket_rows_html( $report['buckets'] ),
+        ) );
+    }
+
     public static function render_source_center_card() {
         if ( ! current_user_can( 'manage_options' ) || ! self::is_source_center_page() ) {
             return;
         }
 
         $report = self::report();
+        $nonce  = wp_create_nonce( self::NONCE_ACTION );
         echo '<div id="ssc-review-audit-card" class="card ssc-review-audit" style="max-width:1000px;padding:20px;margin-top:18px;">';
         echo '<h2 style="margin-top:0;">İnceleme Kuyruğu Dağılımı</h2>';
-        echo '<p class="description">İnceleme kuyruğundaki <strong>' . esc_html( number_format_i18n( $report['total'] ) ) . '</strong> kayıt mevcut durumlarına göre sınıflandırıldı. Bu rapor hiçbir candidate veya Event durumunu değiştirmez.</p>';
-        echo '<div style="margin-top:14px;">';
-        foreach ( $report['buckets'] as $bucket ) {
-            if ( empty( $bucket['count'] ) ) {
-                continue;
-            }
-            echo '<div style="display:flex;justify-content:space-between;gap:20px;padding:7px 0;border-top:1px solid #e2e4e7;">';
-            echo '<span>' . esc_html( $bucket['label'] ) . '</span><strong>' . esc_html( number_format_i18n( $bucket['count'] ) ) . '</strong>';
-            echo '</div>';
-        }
-        echo '</div>';
+        echo '<p class="description ssc-review-audit-description">İnceleme kuyruğundaki <strong class="ssc-review-audit-total">' . esc_html( number_format_i18n( $report['total'] ) ) . '</strong> kayıt mevcut durumlarına göre sınıflandırıldı. Bu rapor hiçbir candidate veya Event durumunu değiştirmez.</p>';
+        echo '<div class="ssc-review-audit-rows" style="margin-top:14px;">' . self::bucket_rows_html( $report['buckets'] ) . '</div>';
         echo '</div>';
         ?>
         <script>
@@ -101,15 +109,47 @@ class Sektorel_Event_Review_Queue_Audit {
             var $card=$('#ssc-review-audit-card');
             var $advanced=$('.sektorel-source-center .ssc-advanced').first();
             var $main=$('.sektorel-source-center .ssc-main').first();
+            var refreshed=false;
             if(!$card.length){ return; }
             if($advanced.length){
                 $card.insertBefore($advanced);
             }else if($main.length){
                 $card.insertAfter($main);
             }
+
+            function refreshAudit(){
+                $.post(ajaxurl,{action:'sektorel_review_queue_audit_report',nonce:'<?php echo esc_js( $nonce ); ?>'}).done(function(r){
+                    if(!r||!r.success){ return; }
+                    $card.find('.ssc-review-audit-total').text(Number(r.data.total||0).toLocaleString());
+                    $card.find('.ssc-review-audit-rows').html(r.data.rows||'');
+                });
+            }
+
+            $('#ssc-start').on('click',function(){ refreshed=false; });
+            window.setInterval(function(){
+                if(refreshed){ return; }
+                var $summary=$('#ssc-summary');
+                if($summary.length && $summary.is(':visible') && $summary.text().indexOf('Kaynak taraması tamamlandı')!==-1){
+                    refreshed=true;
+                    refreshAudit();
+                }
+            },500);
         });
         </script>
         <?php
+    }
+
+    private static function bucket_rows_html( $buckets ) {
+        $html = '';
+        foreach ( (array) $buckets as $bucket ) {
+            if ( empty( $bucket['count'] ) ) {
+                continue;
+            }
+            $html .= '<div style="display:flex;justify-content:space-between;gap:20px;padding:7px 0;border-top:1px solid #e2e4e7;">';
+            $html .= '<span>' . esc_html( $bucket['label'] ) . '</span><strong>' . esc_html( number_format_i18n( $bucket['count'] ) ) . '</strong>';
+            $html .= '</div>';
+        }
+        return $html;
     }
 
     private static function reviewable_candidate_ids() {
