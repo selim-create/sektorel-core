@@ -35,6 +35,9 @@ class Sektorel_Event_Source_Module {
         require_once __DIR__ . '/class-event-official-calendar-admin.php';
         Sektorel_Event_Official_Calendar_Admin::init();
 
+        require_once __DIR__ . '/class-event-official-conditional-rules.php';
+        Sektorel_Event_Official_Conditional_Rules::init();
+
         Sektorel_Event_Source_Stage_Registry::register( array(
             'key'              => 'official_calendar',
             'order'            => 15,
@@ -45,6 +48,21 @@ class Sektorel_Event_Source_Module {
             'batch_action'     => 'sektorel_official_calendar_batch',
             'batch_callback'   => array( 'Sektorel_Event_Official_Calendar_Stage', 'ajax_batch' ),
             'nonce_action'     => Sektorel_Event_Official_Calendar_Stage::NONCE_ACTION,
+            'prepare_payload'  => array( __CLASS__, 'official_calendar_payload' ),
+        ) );
+
+        require_once __DIR__ . '/class-event-official-calendar-phase2-stage.php';
+        Sektorel_Event_Official_Calendar_Phase2_Stage::init();
+        Sektorel_Event_Source_Stage_Registry::register( array(
+            'key'              => 'official_calendar_phase2',
+            'order'            => 16,
+            'label'            => 'Sektörel Resmî Yükümlülükleri Güncelle',
+            'description'      => 'Çevre Bakanlığı, EPDK ve SPK kaynaklı sektör/şirket tipine özel deterministic resmî son tarihleri taslak Event olarak günceller.',
+            'prepare_action'   => 'sektorel_official_calendar_phase2_prepare',
+            'prepare_callback' => array( 'Sektorel_Event_Official_Calendar_Phase2_Stage', 'ajax_prepare' ),
+            'batch_action'     => 'sektorel_official_calendar_phase2_batch',
+            'batch_callback'   => array( 'Sektorel_Event_Official_Calendar_Phase2_Stage', 'ajax_batch' ),
+            'nonce_action'     => Sektorel_Event_Official_Calendar_Phase2_Stage::NONCE_ACTION,
             'prepare_payload'  => array( __CLASS__, 'official_calendar_payload' ),
         ) );
 
