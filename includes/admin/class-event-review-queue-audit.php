@@ -109,7 +109,6 @@ class Sektorel_Event_Review_Queue_Audit {
             var $card=$('#ssc-review-audit-card');
             var $advanced=$('.sektorel-source-center .ssc-advanced').first();
             var $main=$('.sektorel-source-center .ssc-main').first();
-            var refreshed=false;
             if(!$card.length){ return; }
             if($advanced.length){
                 $card.insertBefore($advanced);
@@ -125,15 +124,15 @@ class Sektorel_Event_Review_Queue_Audit {
                 });
             }
 
-            $('#ssc-start').on('click',function(){ refreshed=false; });
-            window.setInterval(function(){
-                if(refreshed){ return; }
-                var $summary=$('#ssc-summary');
-                if($summary.length && $summary.is(':visible') && $summary.text().indexOf('Kaynak taraması tamamlandı')!==-1){
-                    refreshed=true;
-                    refreshAudit();
-                }
-            },500);
+            var summary=document.getElementById('ssc-summary');
+            if(summary && window.MutationObserver){
+                var observer=new MutationObserver(function(){
+                    if((summary.textContent||'').indexOf('Kaynak taraması tamamlandı.')!==-1){
+                        refreshAudit();
+                    }
+                });
+                observer.observe(summary,{childList:true,subtree:true,characterData:true});
+            }
         });
         </script>
         <?php
@@ -162,7 +161,7 @@ class Sektorel_Event_Review_Queue_Audit {
             'order'          => 'ASC',
             'no_found_rows'  => true,
         ) );
-        $archive = class_exists( 'Sektorel_Event_Candidate_Inbox' ) ? Sektorel_Event_Candidate_Inbox::archive_statuses() : array( 'imported', 'existing', 'ignored', 'rejected' );
+        $archive = class_exists( 'Sektorel_Event_Candidate_Inbox' ) ? Sektorel_Event_Candidate_Inbox::archive_statuses() : array( 'imported', 'existing', 'ignored', 'rejected', 'expired' );
         $reviewable = array();
         foreach ( $ids as $candidate_id ) {
             $candidate_id = absint( $candidate_id );
