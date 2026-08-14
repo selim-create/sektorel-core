@@ -18,6 +18,8 @@ class Sektorel_Event_Source_Title_Repair_Stage {
         add_action( 'wp_ajax_sektorel_source_title_repair_prepare', array( __CLASS__, 'ajax_prepare' ) );
         add_action( 'wp_ajax_sektorel_source_title_repair_batch', array( __CLASS__, 'ajax_batch' ) );
         add_filter( 'sektorel_source_center_stages', array( __CLASS__, 'inject_stage' ), 10000 );
+        add_filter( 'sektorel_source_background_action_map', array( __CLASS__, 'filter_action_map' ), 10000 );
+        add_filter( 'sektorel_source_background_nonce_actions', array( __CLASS__, 'filter_nonce_action_map' ), 10000 );
     }
 
     public static function inject_stage( $stages ) {
@@ -44,6 +46,20 @@ class Sektorel_Event_Source_Title_Repair_Stage {
             $result[] = $stage;
         }
         return $result;
+    }
+
+    public static function filter_action_map( $map ) {
+        $map = (array) $map;
+        $map['sektorel_source_title_repair_prepare'] = array( __CLASS__, 'ajax_prepare' );
+        $map['sektorel_source_title_repair_batch']   = array( __CLASS__, 'ajax_batch' );
+        return $map;
+    }
+
+    public static function filter_nonce_action_map( $map ) {
+        $map = (array) $map;
+        $map['sektorel_source_title_repair_prepare'] = self::NONCE_ACTION;
+        $map['sektorel_source_title_repair_batch']   = self::NONCE_ACTION;
+        return $map;
     }
 
     public static function ajax_prepare() {
