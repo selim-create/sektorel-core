@@ -1,94 +1,56 @@
 <?php
 
-if ( ! defined( 'ABSPATH' ) ) {
-    exit;
-}
+if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-/**
- * Explicit bootstrap for the event-source ingestion module.
- *
- * Provider classes own parser/import behavior only. Pipeline stage metadata,
- * callbacks, order and nonce actions are owned centrally by Stage Registry.
- */
 class Sektorel_Event_Source_Module {
-
     private static $initialized = false;
 
     public static function init() {
-        if ( self::$initialized ) {
-            return;
-        }
-
+        if ( self::$initialized ) return;
         self::$initialized = true;
 
         require_once __DIR__ . '/class-event-source-stage-registry.php';
-
-        require_once __DIR__ . '/class-event-source-center-reporting.php';
-        Sektorel_Event_Source_Center_Reporting::init();
-
-        require_once __DIR__ . '/class-event-source-background-run.php';
-        Sektorel_Event_Source_Background_Run::init();
-
-        require_once __DIR__ . '/class-event-source-ifm.php';
-        Sektorel_Event_Source_IFM::init();
-
-        require_once __DIR__ . '/class-event-source-tuyap.php';
-        Sektorel_Event_Source_Tuyap::init();
-
-        require_once __DIR__ . '/class-event-source-tuyap-conflict-review.php';
-        Sektorel_Event_Source_Tuyap_Conflict_Review::init();
-
-        require_once __DIR__ . '/class-event-canonical-draft-stage.php';
-        Sektorel_Event_Canonical_Draft_Stage::init();
+        require_once __DIR__ . '/class-event-source-center-reporting.php'; Sektorel_Event_Source_Center_Reporting::init();
+        require_once __DIR__ . '/class-event-source-background-run.php'; Sektorel_Event_Source_Background_Run::init();
+        require_once __DIR__ . '/class-event-source-ifm.php'; Sektorel_Event_Source_IFM::init();
+        require_once __DIR__ . '/class-event-source-tuyap.php'; Sektorel_Event_Source_Tuyap::init();
+        require_once __DIR__ . '/class-event-source-tuyap-conflict-review.php'; Sektorel_Event_Source_Tuyap_Conflict_Review::init();
+        require_once __DIR__ . '/class-event-canonical-draft-stage.php'; Sektorel_Event_Canonical_Draft_Stage::init();
 
         require_once __DIR__ . '/class-event-source-trusted-discovery.php';
         Sektorel_Event_Source_Trusted_Discovery::init();
         Sektorel_Event_Source_Stage_Registry::register( array(
-            'key'              => 'trusted_discovery',
-            'order'            => 55,
-            'label'            => 'Güvenilir Kaynak Keşfi',
-            'description'      => 'Webrazzi ve TEKNOFEST resmî etkinlik sayfalarını kaynağa özel deterministic adapterlarla tarar.',
-            'prepare_action'   => 'sektorel_trusted_discovery_prepare',
-            'prepare_callback' => array( 'Sektorel_Event_Source_Trusted_Discovery', 'ajax_prepare' ),
-            'batch_action'     => 'sektorel_trusted_discovery_batch',
-            'batch_callback'   => array( 'Sektorel_Event_Source_Trusted_Discovery', 'ajax_batch' ),
-            'nonce_action'     => Sektorel_Event_Source_Trusted_Discovery::NONCE_ACTION,
-            'prepare_payload'  => array( __CLASS__, 'trusted_discovery_payload' ),
+            'key'=>'trusted_discovery','order'=>55,'label'=>'Güvenilir Kaynak Keşfi',
+            'description'=>'Webrazzi ve TEKNOFEST resmî etkinlik sayfalarını kaynağa özel deterministic adapterlarla tarar.',
+            'prepare_action'=>'sektorel_trusted_discovery_prepare','prepare_callback'=>array('Sektorel_Event_Source_Trusted_Discovery','ajax_prepare'),
+            'batch_action'=>'sektorel_trusted_discovery_batch','batch_callback'=>array('Sektorel_Event_Source_Trusted_Discovery','ajax_batch'),
+            'nonce_action'=>Sektorel_Event_Source_Trusted_Discovery::NONCE_ACTION,'prepare_payload'=>array(__CLASS__,'trusted_discovery_payload'),
         ) );
 
-        require_once __DIR__ . '/class-event-candidate-inbox.php';
-        Sektorel_Event_Candidate_Inbox::init();
-
-        require_once __DIR__ . '/class-event-review-queue-audit.php';
-        Sektorel_Event_Review_Queue_Audit::init();
-
-        require_once __DIR__ . '/class-event-candidate-enrichment-actions.php';
-        Sektorel_Event_Candidate_Enrichment_Actions::init();
-
-        require_once __DIR__ . '/class-event-candidate-manual-match.php';
-        Sektorel_Event_Candidate_Manual_Match::init();
-
-        require_once __DIR__ . '/class-event-source-title-repair-stage.php';
-        Sektorel_Event_Source_Title_Repair_Stage::init();
-
-        require_once __DIR__ . '/class-event-candidate-background-matcher.php';
-        Sektorel_Event_Candidate_Background_Matcher::init();
-
+        require_once __DIR__ . '/class-event-candidate-inbox.php'; Sektorel_Event_Candidate_Inbox::init();
+        require_once __DIR__ . '/class-event-review-queue-audit.php'; Sektorel_Event_Review_Queue_Audit::init();
+        require_once __DIR__ . '/class-event-candidate-enrichment-actions.php'; Sektorel_Event_Candidate_Enrichment_Actions::init();
+        require_once __DIR__ . '/class-event-candidate-manual-match.php'; Sektorel_Event_Candidate_Manual_Match::init();
+        require_once __DIR__ . '/class-event-source-title-repair-stage.php'; Sektorel_Event_Source_Title_Repair_Stage::init();
+        require_once __DIR__ . '/class-event-candidate-background-matcher.php'; Sektorel_Event_Candidate_Background_Matcher::init();
         require_once __DIR__ . '/class-event-review-expiry.php';
+        require_once __DIR__ . '/class-event-review-queue-reducer.php'; Sektorel_Event_Review_Queue_Reducer::init();
+        require_once __DIR__ . '/class-event-safe-discovery-draft-stage.php'; Sektorel_Event_Safe_Discovery_Draft_Stage::init();
 
-        require_once __DIR__ . '/class-event-review-queue-reducer.php';
-        Sektorel_Event_Review_Queue_Reducer::init();
+        require_once __DIR__ . '/class-event-data-health.php';
+        Sektorel_Event_Data_Health::init();
+        Sektorel_Event_Source_Stage_Registry::register( array(
+            'key'=>'event_data_health','order'=>95,'label'=>'Etkinlik Veri Sağlığını Kontrol Et',
+            'description'=>'Gelecek ve aktif Event kayıtlarında completeness, eksik alanlar ve kaynak çakışmalarını hesaplar; hiçbir alanı overwrite etmez.',
+            'prepare_action'=>'sektorel_event_data_health_prepare','prepare_callback'=>array('Sektorel_Event_Data_Health','ajax_prepare'),
+            'batch_action'=>'sektorel_event_data_health_batch','batch_callback'=>array('Sektorel_Event_Data_Health','ajax_batch'),
+            'nonce_action'=>Sektorel_Event_Data_Health::NONCE_ACTION,'prepare_payload'=>array(),
+        ) );
 
-        require_once __DIR__ . '/class-event-safe-discovery-draft-stage.php';
-        Sektorel_Event_Safe_Discovery_Draft_Stage::init();
-
+        require_once __DIR__ . '/class-event-ai-assistant.php'; Sektorel_Event_AI_Assistant::init();
         Sektorel_Event_Source_Stage_Registry::init();
-
-        require_once __DIR__ . '/class-event-pipeline-reporting-detail.php';
-        Sektorel_Event_Pipeline_Reporting_Detail::init();
+        require_once __DIR__ . '/class-event-pipeline-reporting-detail.php'; Sektorel_Event_Pipeline_Reporting_Detail::init();
     }
 
-    public static function trusted_discovery_payload() {
-        return array( 'year' => (int) current_time( 'Y' ) );
-    }
+    public static function trusted_discovery_payload() { return array( 'year' => (int) current_time( 'Y' ) ); }
 }
