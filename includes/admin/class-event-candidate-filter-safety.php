@@ -4,6 +4,13 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
+/**
+ * Keep the Event Candidate list read-only.
+ *
+ * Candidate classification and cleanup now belong to the explicit Source Center
+ * pipeline. Merely opening the admin list must never mutate archived/resolved
+ * candidate state. This also preserves the previous filtered-list safety mode.
+ */
 class Sektorel_Event_Candidate_Filter_Safety {
 
     public static function init() {
@@ -17,10 +24,9 @@ class Sektorel_Event_Candidate_Filter_Safety {
             return;
         }
 
-        if ( ! self::has_candidate_filter() ) {
-            return;
-        }
-
+        // Source Center owns deterministic matching/maintenance. The candidate
+        // list is an operational review surface and must not rewrite status just
+        // because an administrator opened or refreshed it.
         if ( class_exists( 'Sektorel_Event_Candidate_Quality' ) ) {
             remove_action( 'load-edit.php', array( 'Sektorel_Event_Candidate_Quality', 'maybe_cleanup_existing_candidates' ) );
         }
@@ -36,36 +42,5 @@ class Sektorel_Event_Candidate_Filter_Safety {
         if ( class_exists( 'Sektorel_Event_Candidate_Field_Quality' ) ) {
             remove_action( 'load-edit.php', array( 'Sektorel_Event_Candidate_Field_Quality', 'cleanup_existing_candidates' ), 65 );
         }
-    }
-
-    private static function has_candidate_filter() {
-        $keys = array(
-            'candidate_confidence',
-            'candidate_match_status',
-            'candidate_parser',
-            'candidate_quality',
-            'candidate_triage',
-            's',
-            'm',
-        );
-
-        foreach ( $keys as $key ) {
-            if ( ! isset( $_GET[ $key ] ) ) {
-                continue;
-            }
-
-            $value = wp_unslash( $_GET[ $key ] );
-            if ( is_array( $value ) ) {
-                $value = implode( '', array_map( 'sanitize_text_field', $value ) );
-            } else {
-                $value = sanitize_text_field( (string) $value );
-            }
-
-            if ( '' !== trim( $value ) && '0' !== trim( $value ) ) {
-                return true;
-            }
-        }
-
-        return false;
     }
 }
