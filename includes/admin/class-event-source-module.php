@@ -29,6 +29,25 @@ class Sektorel_Event_Source_Module {
         require_once __DIR__ . '/class-event-source-background-run.php';
         Sektorel_Event_Source_Background_Run::init();
 
+        require_once __DIR__ . '/class-event-official-calendar-stage.php';
+        Sektorel_Event_Official_Calendar_Stage::init();
+
+        require_once __DIR__ . '/class-event-official-calendar-admin.php';
+        Sektorel_Event_Official_Calendar_Admin::init();
+
+        Sektorel_Event_Source_Stage_Registry::register( array(
+            'key'              => 'official_calendar',
+            'order'            => 15,
+            'label'            => 'Resmî Takvimi Güncelle',
+            'description'      => 'GİB, SGK ve Ticaret Bakanlığı kaynaklı çekirdek şirket yükümlülüklerini idempotent taslak Event kayıtlarına dönüştürür.',
+            'prepare_action'   => 'sektorel_official_calendar_prepare',
+            'prepare_callback' => array( 'Sektorel_Event_Official_Calendar_Stage', 'ajax_prepare' ),
+            'batch_action'     => 'sektorel_official_calendar_batch',
+            'batch_callback'   => array( 'Sektorel_Event_Official_Calendar_Stage', 'ajax_batch' ),
+            'nonce_action'     => Sektorel_Event_Official_Calendar_Stage::NONCE_ACTION,
+            'prepare_payload'  => array( __CLASS__, 'official_calendar_payload' ),
+        ) );
+
         require_once __DIR__ . '/class-event-source-ifm.php';
         Sektorel_Event_Source_IFM::init();
 
@@ -104,6 +123,10 @@ class Sektorel_Event_Source_Module {
 
         require_once __DIR__ . '/class-event-pipeline-reporting-detail.php';
         Sektorel_Event_Pipeline_Reporting_Detail::init();
+    }
+
+    public static function official_calendar_payload() {
+        return array( 'year' => (int) current_time( 'Y' ) );
     }
 
     public static function trusted_discovery_payload() {
