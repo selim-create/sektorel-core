@@ -17,21 +17,33 @@ class Sektorel_Event_Source_Title_Repair_Stage {
     public static function init() {
         add_action( 'wp_ajax_sektorel_source_title_repair_prepare', array( __CLASS__, 'ajax_prepare' ) );
         add_action( 'wp_ajax_sektorel_source_title_repair_batch', array( __CLASS__, 'ajax_batch' ) );
+        add_filter( 'sektorel_source_center_stages', array( __CLASS__, 'inject_stage' ), 10000 );
     }
 
-    public static function definition() {
-        return array(
-            'key'              => 'source_title_repair',
-            'order'            => 75,
-            'label'            => 'Kaynak Başlığını Doğrula',
-            'description'      => 'Doğrulanmış ICCI/IIFF HTML başlık hatalarını matcher öncesinde güvenli biçimde düzeltir.',
-            'prepare_action'   => 'sektorel_source_title_repair_prepare',
-            'prepare_callback' => array( __CLASS__, 'ajax_prepare' ),
-            'batch_action'     => 'sektorel_source_title_repair_batch',
-            'batch_callback'   => array( __CLASS__, 'ajax_batch' ),
-            'nonce_action'     => self::NONCE_ACTION,
-            'prepare_payload'  => array(),
+    public static function inject_stage( $stages ) {
+        $stage = array(
+            'key'             => 'source_title_repair',
+            'label'           => 'Kaynak Başlığını Doğrula',
+            'description'     => 'Doğrulanmış ICCI/IIFF HTML başlık hatalarını matcher öncesinde güvenli biçimde düzeltir.',
+            'prepare_action'  => 'sektorel_source_title_repair_prepare',
+            'batch_action'    => 'sektorel_source_title_repair_batch',
+            'nonce'           => wp_create_nonce( self::NONCE_ACTION ),
+            'prepare_payload' => array(),
         );
+
+        $result   = array();
+        $inserted = false;
+        foreach ( (array) $stages as $item ) {
+            if ( ! $inserted && isset( $item['key'] ) && 'candidate_matcher' === $item['key'] ) {
+                $result[] = $stage;
+                $inserted = true;
+            }
+            $result[] = $item;
+        }
+        if ( ! $inserted ) {
+            $result[] = $stage;
+        }
+        return $result;
     }
 
     public static function ajax_prepare() {
