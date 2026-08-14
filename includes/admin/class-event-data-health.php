@@ -8,7 +8,7 @@ class Sektorel_Event_Data_Health {
     const NONCE_ACTION = 'sektorel_event_data_health';
     const QUEUE_TTL = 7200;
     const BATCH_SIZE = 25;
-    const VERSION = '1460';
+    const VERSION = '1481';
     private static $lock = false;
 
     public static function init() {
@@ -106,19 +106,44 @@ class Sektorel_Event_Data_Health {
         $event_url = trim( (string) get_post_meta( $event_id, 'event_url', true ) );
         $source_url = trim( (string) get_post_meta( $event_id, 'source_url', true ) );
         $registration = trim( (string) get_post_meta( $event_id, 'registration_link', true ) );
-        $checks = array(
-            'title' => array(15, '' !== $title), 'start_date' => array(20, '' !== $start),
-            'end_date' => array(10, '' !== $end), 'location_type' => array(5, '' !== $location),
-            'organizer' => array(10, '' !== $organizer), 'official_link' => array(10, '' !== $event_url || '' !== $source_url),
-            'registration_link' => array(5, '' !== $registration), 'description' => array(10, self::text_length( $description ) >= 40),
-        );
-        if ( 'online' === $location ) {
-            $checks['online_location'] = array(15, '' !== $event_url || '' !== $registration);
-        } elseif ( 'hybrid' === $location ) {
-            $checks['venue'] = array(10, '' !== $venue); $checks['hybrid_link'] = array(5, '' !== $event_url || '' !== $registration);
+        $is_official = '1' === (string) get_post_meta( $event_id, 'is_official', true )
+            && 'resmi' === sanitize_key( (string) get_post_meta( $event_id, 'event_type', true ) );
+
+        if ( $is_official ) {
+            $institution = self::clean_text( get_post_meta( $event_id, 'official_institution', true ) );
+            $official_url = trim( (string) get_post_meta( $event_id, 'official_source_url', true ) );
+            $category = sanitize_key( (string) get_post_meta( $event_id, 'official_category', true ) );
+            $rule_key = sanitize_key( (string) get_post_meta( $event_id, 'official_rule_key', true ) );
+            $applicability = get_post_meta( $event_id, 'official_applicability', true );
+            $applicability = is_array( $applicability ) ? array_values( array_filter( $applicability ) ) : array();
+
+            $checks = array(
+                'title'                  => array( 15, '' !== $title ),
+                'start_date'             => array( 20, '' !== $start ),
+                'end_date'               => array( 5, '' !== $end ),
+                'official_institution'   => array( 15, '' !== $institution ),
+                'official_link'          => array( 15, '' !== $official_url || '' !== $event_url || '' !== $source_url ),
+                'official_category'      => array( 10, '' !== $category ),
+                'description'            => array( 10, self::text_length( $description ) >= 40 ),
+                'official_applicability' => array( 5, ! empty( $applicability ) ),
+                'official_rule_key'      => array( 5, '' !== $rule_key ),
+            );
         } else {
-            $checks['venue'] = array(10, '' !== $venue); $checks['address'] = array(5, '' !== $address);
+            $checks = array(
+                'title' => array(15, '' !== $title), 'start_date' => array(20, '' !== $start),
+                'end_date' => array(10, '' !== $end), 'location_type' => array(5, '' !== $location),
+                'organizer' => array(10, '' !== $organizer), 'official_link' => array(10, '' !== $event_url || '' !== $source_url),
+                'registration_link' => array(5, '' !== $registration), 'description' => array(10, self::text_length( $description ) >= 40),
+            );
+            if ( 'online' === $location ) {
+                $checks['online_location'] = array(15, '' !== $event_url || '' !== $registration);
+            } elseif ( 'hybrid' === $location ) {
+                $checks['venue'] = array(10, '' !== $venue); $checks['hybrid_link'] = array(5, '' !== $event_url || '' !== $registration);
+            } else {
+                $checks['venue'] = array(10, '' !== $venue); $checks['address'] = array(5, '' !== $address);
+            }
         }
+
         $earned = $possible = 0; $missing = array();
         foreach ( $checks as $field => $check ) {
             $weight = absint( $check[0] ); $possible += $weight;
@@ -183,7 +208,7 @@ class Sektorel_Event_Data_Health {
     }
     public static function columns($columns){$result=array();foreach($columns as $key=>$label){$result[$key]=$label;if('date'===$key)$result['event_health']='Veri Sağlığı';}if(!isset($result['event_health']))$result['event_health']='Veri Sağlığı';return $result;}
     public static function render_column($column,$post_id){if('event_health'!==$column)return;$score=absint(get_post_meta($post_id,'event_completeness_score',true));$conflicts=absint(get_post_meta($post_id,'event_conflict_count',true));echo '<strong>'.esc_html((string)$score).'/100</strong>';if($conflicts)echo '<br><span style="color:#b32d2e;">'.esc_html((string)$conflicts).' çakışma</span>';}
-    private static function field_labels(){return array('title'=>'Başlık','start_date'=>'Başlangıç tarihi','end_date'=>'Bitiş tarihi','location_type'=>'Konum türü','venue'=>'Mekan','address'=>'Adres','organizer'=>'Organizatör','official_link'=>'Resmî/kaynak bağlantısı','registration_link'=>'Kayıt bağlantısı','description'=>'Açıklama','online_location'=>'Online katılım bağlantısı','hybrid_link'=>'Online katılım bağlantısı');}
+    private static function field_labels(){return array('title'=>'Başlık','start_date'=>'Başlangıç tarihi','end_date'=>'Bitiş tarihi','location_type'=>'Konum türü','venue'=>'Mekan','address'=>'Adres','organizer'=>'Organizatör','official_link'=>'Resmî/kaynak bağlantısı','registration_link'=>'Kayıt bağlantısı','description'=>'Açıklama','online_location'=>'Online katılım bağlantısı','hybrid_link'=>'Online katılım bağlantısı','official_institution'=>'İlgili kurum','official_category'=>'Resmî kategori','official_applicability'=>'Uygulanabilirlik','official_rule_key'=>'Resmî kural');}
     private static function text_length($v){return function_exists('mb_strlen')?mb_strlen((string)$v,'UTF-8'):strlen((string)$v);}
     private static function date_part($v){return preg_match('/^(\d{4}-\d{2}-\d{2})/',trim((string)$v),$m)?$m[1]:'';}
     private static function normalize_text($v){$v=strtolower(remove_accents(self::clean_text($v)));$v=preg_replace('/[^a-z0-9]+/i',' ',$v);return trim(preg_replace('/\s+/',' ',$v));}
