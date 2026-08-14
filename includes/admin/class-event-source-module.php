@@ -82,6 +82,24 @@ class Sektorel_Event_Source_Module {
         require_once __DIR__ . '/class-event-safe-discovery-draft-stage.php';
         Sektorel_Event_Safe_Discovery_Draft_Stage::init();
 
+        require_once __DIR__ . '/class-event-data-health.php';
+        Sektorel_Event_Data_Health::init();
+        Sektorel_Event_Source_Stage_Registry::register( array(
+            'key'              => 'event_data_health',
+            'order'            => 95,
+            'label'            => 'Etkinlik Veri Sağlığını Kontrol Et',
+            'description'      => 'Gelecek ve aktif Event kayıtlarında completeness, eksik alanlar ve kaynak çakışmalarını hesaplar; hiçbir alanı overwrite etmez.',
+            'prepare_action'   => 'sektorel_event_data_health_prepare',
+            'prepare_callback' => array( 'Sektorel_Event_Data_Health', 'ajax_prepare' ),
+            'batch_action'     => 'sektorel_event_data_health_batch',
+            'batch_callback'   => array( 'Sektorel_Event_Data_Health', 'ajax_batch' ),
+            'nonce_action'     => Sektorel_Event_Data_Health::NONCE_ACTION,
+            'prepare_payload'  => array(),
+        ) );
+
+        require_once __DIR__ . '/class-event-ai-assistant.php';
+        Sektorel_Event_AI_Assistant::init();
+
         Sektorel_Event_Source_Stage_Registry::init();
 
         require_once __DIR__ . '/class-event-pipeline-reporting-detail.php';
