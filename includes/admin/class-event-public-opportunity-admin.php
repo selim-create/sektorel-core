@@ -6,12 +6,36 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /**
  * Read-only admin / GraphQL semantics for public support opportunities.
+ *
+ * Also owns the 1.51 live-discovery bridge. The legacy 1.50 stage remains
+ * loaded as the verified catalogue/fallback, while AJAX and background action
+ * dispatch are redirected to the live adapter.
  */
 class Sektorel_Event_Public_Opportunity_Admin {
 
     public static function init() {
+        self::init_live_discovery_bridge();
         add_action( 'add_meta_boxes', array( __CLASS__, 'add_meta_boxes' ), 111 );
         add_action( 'graphql_register_types', array( __CLASS__, 'register_graphql_fields' ), 36 );
+    }
+
+    private static function init_live_discovery_bridge() {
+        require_once __DIR__ . '/class-event-public-opportunity-live-stage.php';
+
+        if ( class_exists( 'Sektorel_Event_Public_Opportunity_Stage' ) ) {
+            remove_action( 'wp_ajax_sektorel_public_opportunities_prepare', array( 'Sektorel_Event_Public_Opportunity_Stage', 'ajax_prepare' ) );
+            remove_action( 'wp_ajax_sektorel_public_opportunities_batch', array( 'Sektorel_Event_Public_Opportunity_Stage', 'ajax_batch' ) );
+        }
+
+        Sektorel_Event_Public_Opportunity_Live_Stage::init();
+        add_filter( 'sektorel_source_background_action_map', array( __CLASS__, 'override_background_action_map' ), 50 );
+    }
+
+    public static function override_background_action_map( $map ) {
+        $map = is_array( $map ) ? $map : array();
+        $map['sektorel_public_opportunities_prepare'] = array( 'Sektorel_Event_Public_Opportunity_Live_Stage', 'ajax_prepare' );
+        $map['sektorel_public_opportunities_batch']   = array( 'Sektorel_Event_Public_Opportunity_Live_Stage', 'ajax_batch' );
+        return $map;
     }
 
     public static function add_meta_boxes() {
@@ -42,6 +66,7 @@ class Sektorel_Event_Public_Opportunity_Admin {
         $audience = is_array( $audience ) ? array_values( array_filter( array_map( 'sanitize_key', $audience ) ) ) : array();
         $source   = esc_url( (string) get_post_meta( $post->ID, 'opportunity_source_url', true ) );
         $apply    = esc_url( (string) get_post_meta( $post->ID, 'opportunity_application_url', true ) );
+        $basis    = sanitize_key( (string) get_post_meta( $post->ID, 'opportunity_date_basis', true ) );
 
         echo '<p><strong>' . esc_html( $managed ? 'Otomatik yönetilen fırsat' : 'Manuel fırsat kaydı' ) . '</strong></p>';
         echo '<p><strong>Son başvuru semantiği:</strong><br>Gün boyu deadline</p>';
@@ -70,6 +95,9 @@ class Sektorel_Event_Public_Opportunity_Admin {
             }
             echo '</ul>';
         }
+        if ( $basis ) {
+            echo '<p><strong>Kaynak modu:</strong><br>' . esc_html( self::basis_label( $basis ) ) . '</p>';
+        }
         if ( $source ) {
             echo '<p><a href="' . $source . '" target="_blank" rel="noopener noreferrer">Resmî duyuruyu aç</a></p>';
         }
@@ -95,6 +123,7 @@ class Sektorel_Event_Public_Opportunity_Admin {
             'opportunitySourceUrl'            => array( 'type' => 'String', 'meta' => 'opportunity_source_url' ),
             'opportunityApplicationUrl'       => array( 'type' => 'String', 'meta' => 'opportunity_application_url' ),
             'opportunityAmount'               => array( 'type' => 'String', 'meta' => 'opportunity_amount' ),
+            'opportunityDateBasis'            => array( 'type' => 'String', 'meta' => 'opportunity_date_basis' ),
             'opportunityIsDeadline'           => array( 'type' => 'Boolean', 'meta' => 'opportunity_is_deadline', 'boolean' => true ),
         );
 
@@ -130,20 +159,38 @@ class Sektorel_Event_Public_Opportunity_Admin {
         $labels = array(
             'credit_support' => 'Kredi / finansman desteği',
             'grant_call'     => 'Hibe / proje çağrısı',
+            'support_call'   => 'Destek / başvuru çağrısı',
         );
         return isset( $labels[ $kind ] ) ? $labels[ $kind ] : $kind;
     }
 
     private static function audience_label( $key ) {
         $labels = array(
-            'technology_startup'           => 'Teknoloji girişimleri',
-            'technogirisim_badge_holder'   => 'Geçerli Teknogirişim Rozeti sahipleri',
-            'kosgeb_registered_sme'        => 'KOSGEB veri tabanında kayıtlı KOBİ’ler',
-            'disabled_entrepreneur'         => 'Engelli girişimciler',
-            'ex_convict_entrepreneur'       => 'Eski hükümlü girişimciler',
-            'protected_workplace_project'   => 'Korumalı işyeri projeleri',
+            'technology_startup'             => 'Teknoloji girişimleri',
+            'technogirisim_badge_holder'     => 'Geçerli Teknogirişim Rozeti sahipleri',
+            'kosgeb_registered_sme'          => 'KOSGEB veri tabanında kayıtlı KOBİ’ler',
+            'kosgeb_eligible_business'        => 'KOSGEB desteğine uygun işletmeler',
+            'entrepreneur'                    => 'Girişimciler',
+            'women_entrepreneur'              => 'Kadın girişimciler',
+            'young_entrepreneur'              => 'Genç girişimciler',
+            'disabled_entrepreneur'           => 'Engelli girişimciler',
+            'ex_convict_entrepreneur'         => 'Eski hükümlü girişimciler',
+            'protected_workplace_project'     => 'Korumalı işyeri projeleri',
+            'supported_employment_project'    => 'Destekli istihdam projeleri',
+            'eligible_project_organization'   => 'Uygun proje kuruluşları',
+            'iskur_eligible_applicant'         => 'İŞKUR çağrısına uygun başvuru sahipleri',
         );
         return isset( $labels[ $key ] ) ? $labels[ $key ] : $key;
+    }
+
+    private static function basis_label( $basis ) {
+        $labels = array(
+            'verified_kosgeb_2026_call'    => 'Doğrulanmış KOSGEB yıllık çağrı paketi',
+            'verified_iskur_2026_4_call'   => 'Doğrulanmış İŞKUR çağrı paketi',
+            'live_kosgeb_official_detail'  => 'Canlı KOSGEB resmî detay sayfası',
+            'live_iskur_official_detail'   => 'Canlı İŞKUR resmî detay sayfası',
+        );
+        return isset( $labels[ $basis ] ) ? $labels[ $basis ] : $basis;
     }
 
     private static function format_date( $date ) {
