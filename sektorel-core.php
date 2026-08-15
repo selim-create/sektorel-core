@@ -140,7 +140,7 @@ class Sektorel_Core {
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-filter-safety.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-html-container-filter.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-html-stale-filter.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-html-time-proximity.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-html-time-proximity.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-html.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-html-scan-observability.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-html-new-candidate-panel.php';
