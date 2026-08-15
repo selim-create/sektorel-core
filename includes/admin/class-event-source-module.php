@@ -66,6 +66,25 @@ class Sektorel_Event_Source_Module {
             'prepare_payload'  => array( __CLASS__, 'official_calendar_payload' ),
         ) );
 
+        require_once __DIR__ . '/class-event-public-opportunity-stage.php';
+        Sektorel_Event_Public_Opportunity_Stage::init();
+
+        require_once __DIR__ . '/class-event-public-opportunity-admin.php';
+        Sektorel_Event_Public_Opportunity_Admin::init();
+
+        Sektorel_Event_Source_Stage_Registry::register( array(
+            'key'              => 'public_opportunities',
+            'order'            => 17,
+            'label'            => 'Kamu Destekleri ve Son Başvuruları Güncelle',
+            'description'      => 'KOSGEB ve İŞKUR kaynaklı doğrulanmış kamu destek ve başvuru fırsatlarını Resmî Takvimden ayrı fırsat semantiğiyle taslak Event olarak günceller.',
+            'prepare_action'   => 'sektorel_public_opportunities_prepare',
+            'prepare_callback' => array( 'Sektorel_Event_Public_Opportunity_Stage', 'ajax_prepare' ),
+            'batch_action'     => 'sektorel_public_opportunities_batch',
+            'batch_callback'   => array( 'Sektorel_Event_Public_Opportunity_Stage', 'ajax_batch' ),
+            'nonce_action'     => Sektorel_Event_Public_Opportunity_Stage::NONCE_ACTION,
+            'prepare_payload'  => array( __CLASS__, 'public_opportunity_payload' ),
+        ) );
+
         require_once __DIR__ . '/class-event-source-ifm.php';
         Sektorel_Event_Source_IFM::init();
 
@@ -144,6 +163,10 @@ class Sektorel_Event_Source_Module {
     }
 
     public static function official_calendar_payload() {
+        return array( 'year' => (int) current_time( 'Y' ) );
+    }
+
+    public static function public_opportunity_payload() {
         return array( 'year' => (int) current_time( 'Y' ) );
     }
 
