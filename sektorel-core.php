@@ -58,7 +58,7 @@ class Sektorel_Core {
             Sektorel_Event_Candidate_Filter_Safety::init();
             Sektorel_Event_Candidate_HTML_Container_Filter::init();
             Sektorel_Event_Candidate_HTML_Stale_Filter::init();
-            Sektorel_Event_HTML_Time_Proximity::init();
+            Sektorel_Event_Candidate_HTML_Time_Proximity::init();
             Sektorel_Event_Candidate_HTML::init();
             Sektorel_Event_HTML_Scan_Observability::init();
             Sektorel_Event_HTML_New_Candidate_Panel::init();
