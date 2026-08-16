@@ -66,8 +66,14 @@ class Sektorel_Event_Source_Module {
             'prepare_payload'  => array( __CLASS__, 'official_calendar_payload' ),
         ) );
 
+        // Keep the 1.50 verified catalogue loaded as fallback data, but make
+        // the 1.51 live adapter the direct runtime callback registered in the
+        // Source Center. This avoids relying on a later action-map override.
         require_once __DIR__ . '/class-event-public-opportunity-stage.php';
         Sektorel_Event_Public_Opportunity_Stage::init();
+
+        require_once __DIR__ . '/class-event-public-opportunity-live-stage.php';
+        Sektorel_Event_Public_Opportunity_Live_Stage::init();
 
         require_once __DIR__ . '/class-event-public-opportunity-admin.php';
         Sektorel_Event_Public_Opportunity_Admin::init();
@@ -76,12 +82,12 @@ class Sektorel_Event_Source_Module {
             'key'              => 'public_opportunities',
             'order'            => 17,
             'label'            => 'Kamu Destekleri ve Son Başvuruları Güncelle',
-            'description'      => 'KOSGEB ve İŞKUR kaynaklı doğrulanmış kamu destek ve başvuru fırsatlarını Resmî Takvimden ayrı fırsat semantiğiyle taslak Event olarak günceller.',
+            'description'      => 'KOSGEB ve İŞKUR resmî sayfalarını kaynağa özel canlı adapterlarla tarar; doğrulanmış açık/yaklaşan fırsatları ayrı fırsat semantiğiyle taslak Event olarak günceller.',
             'prepare_action'   => 'sektorel_public_opportunities_prepare',
-            'prepare_callback' => array( 'Sektorel_Event_Public_Opportunity_Stage', 'ajax_prepare' ),
+            'prepare_callback' => array( 'Sektorel_Event_Public_Opportunity_Live_Stage', 'ajax_prepare' ),
             'batch_action'     => 'sektorel_public_opportunities_batch',
-            'batch_callback'   => array( 'Sektorel_Event_Public_Opportunity_Stage', 'ajax_batch' ),
-            'nonce_action'     => Sektorel_Event_Public_Opportunity_Stage::NONCE_ACTION,
+            'batch_callback'   => array( 'Sektorel_Event_Public_Opportunity_Live_Stage', 'ajax_batch' ),
+            'nonce_action'     => Sektorel_Event_Public_Opportunity_Live_Stage::NONCE_ACTION,
             'prepare_payload'  => array( __CLASS__, 'public_opportunity_payload' ),
         ) );
 
