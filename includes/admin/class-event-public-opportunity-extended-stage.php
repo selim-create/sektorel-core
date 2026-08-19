@@ -17,8 +17,9 @@ require_once __DIR__ . '/class-event-public-opportunity-eximbank.php';
  */
 class Sektorel_Event_Public_Opportunity_Extended_Stage {
 
-    const NONCE_ACTION = 'sektorel_public_opportunities';
-    const QUEUE_TTL    = 2 * HOUR_IN_SECONDS;
+    const NONCE_ACTION         = 'sektorel_public_opportunities';
+    const QUEUE_TTL            = 2 * HOUR_IN_SECONDS;
+    const OBSERVABILITY_OPTION = 'sektorel_public_opportunity_observability';
 
     public static function init() {
         remove_action( 'wp_ajax_sektorel_public_opportunities_prepare', array( 'Sektorel_Event_Public_Opportunity_Live_Stage', 'ajax_prepare' ) );
@@ -26,6 +27,8 @@ class Sektorel_Event_Public_Opportunity_Extended_Stage {
 
         add_action( 'wp_ajax_sektorel_public_opportunities_prepare', array( __CLASS__, 'ajax_prepare' ) );
         add_action( 'wp_ajax_sektorel_public_opportunities_batch', array( __CLASS__, 'ajax_batch' ) );
+        add_action( 'wp_ajax_sektorel_public_opportunity_observability', array( __CLASS__, 'ajax_observability' ) );
+        add_action( 'admin_footer', array( __CLASS__, 'render_observability_script' ), 130 );
         add_filter( 'sektorel_source_background_action_map', array( __CLASS__, 'override_background_action_map' ), 100 );
     }
 
@@ -103,6 +106,8 @@ class Sektorel_Event_Public_Opportunity_Extended_Stage {
             wp_send_json_error( array( 'message' => 'Kamu fırsatları doğrulanmış fallback ile birleştirilemedi.' ) );
         }
 
+        self::save_observability_snapshot( $year, $stats, $errors );
+
         $token = strtolower( wp_generate_password( 24, false, false ) );
         set_transient(
             self::queue_key( get_current_user_id(), $token ),
@@ -127,6 +132,138 @@ class Sektorel_Event_Public_Opportunity_Extended_Stage {
         Sektorel_Event_Public_Opportunity_Live_Stage::ajax_batch();
     }
 
+    public static function ajax_observability() {
+        self::require_ajax();
+
+        $snapshot = get_option( self::OBSERVABILITY_OPTION, array() );
+        wp_send_json_success(
+            array(
+                'snapshot' => is_array( $snapshot ) ? $snapshot : array(),
+            )
+        );
+    }
+
+    public static function render_observability_script() {
+        if ( ! self::is_source_center_page() || ! current_user_can( 'manage_options' ) ) {
+            return;
+        }
+
+        $nonce = wp_create_nonce( self::NONCE_ACTION );
+        ?>
+        <style>
+            .ssc-public-opportunity-observability{margin-top:8px;padding:8px 10px;background:#f6f7f7;border-left:3px solid #2271b1;font-size:11px;line-height:1.55;color:#50575e}
+            .ssc-public-opportunity-observability strong{color:#1d2327}
+            #ssc-public-opportunity-summary{max-width:1000px;margin-top:10px;padding:12px 14px;background:#fff;border:1px solid #dcdcde;font-size:12px;line-height:1.6}
+            #ssc-public-opportunity-summary .ssc-po-provider{display:inline-block;margin-right:14px;white-space:nowrap}
+            #ssc-public-opportunity-summary .ssc-po-meta{display:block;margin-top:5px;color:#646970}
+        </style>
+        <script>
+        jQuery(function($){
+            var nonce = '<?php echo esc_js( $nonce ); ?>';
+            var lastSignature = '';
+            var pollTimer = null;
+
+            function esc(text){ return $('<div>').text(String(text)).html(); }
+            function providerHtml(provider){
+                return '<span class="ssc-po-provider"><strong>'+esc(provider.label)+'</strong>: '
+                    +Number(provider.links||0)+' bağlantı / '+Number(provider.verified||0)+' doğrulandı</span>';
+            }
+            function render(snapshot){
+                if(!snapshot || !snapshot.providers){ return; }
+                var signature=JSON.stringify(snapshot);
+                if(signature===lastSignature){ return; }
+                lastSignature=signature;
+
+                var providers=[];
+                Object.keys(snapshot.providers).forEach(function(key){ providers.push(providerHtml(snapshot.providers[key])); });
+                var warningCount=Number(snapshot.warnings_total||0);
+                var meta='Son canlı keşif: '+esc(snapshot.checked_at||'—')+' · '+Number(snapshot.year||0);
+                if(warningCount){ meta+=' · Uyarı: '+warningCount; }
+
+                var $stage=$('.ssc-stage[data-stage="public_opportunities"]');
+                if($stage.length){
+                    $stage.find('.ssc-public-opportunity-observability').remove();
+                    $stage.find('.ssc-result').after(
+                        '<div class="ssc-public-opportunity-observability"><strong>Kaynak görünürlüğü</strong><br>'
+                        +providers.join(' · ')+'<br>'+meta+'</div>'
+                    );
+                }
+
+                var $summary=$('#ssc-public-opportunity-summary');
+                if(!$summary.length){
+                    $summary=$('<div id="ssc-public-opportunity-summary"></div>');
+                    $('#ssc-summary').after($summary);
+                }
+                $summary.html('<strong>Kamu fırsatı kaynakları</strong><br>'+providers.join('')+'<span class="ssc-po-meta">'+meta+'</span>');
+            }
+            function fetchSnapshot(){
+                $.post(ajaxurl,{
+                    action:'sektorel_public_opportunity_observability',
+                    nonce:nonce
+                }).done(function(response){
+                    if(response && response.success && response.data){ render(response.data.snapshot||{}); }
+                });
+            }
+            function syncPolling(){
+                var text=$('.ssc-stage[data-stage="public_opportunities"] .ssc-status').text()||'';
+                var active=/Hazırlanıyor|Çalışıyor|Bekliyor/i.test(text);
+                if(active && !pollTimer){ pollTimer=window.setInterval(fetchSnapshot,5000); }
+                if(!active && pollTimer){ window.clearInterval(pollTimer); pollTimer=null; fetchSnapshot(); }
+            }
+
+            fetchSnapshot();
+            syncPolling();
+            var target=document.querySelector('.ssc-stage[data-stage="public_opportunities"]');
+            if(target && window.MutationObserver){
+                new MutationObserver(syncPolling).observe(target,{childList:true,subtree:true,characterData:true});
+            }
+        });
+        </script>
+        <?php
+    }
+
+    private static function save_observability_snapshot( $year, $stats, $errors ) {
+        $labels = array(
+            'kosgeb'               => 'KOSGEB',
+            'iskur'                => 'İŞKUR',
+            'tubitak'              => 'TÜBİTAK',
+            'development_agencies' => 'Kalkınma Ajansları',
+            'trade_ministry'       => 'Ticaret Bakanlığı',
+            'eximbank'             => 'Türk Eximbank',
+        );
+
+        $providers = array();
+        foreach ( $labels as $key => $label ) {
+            $stat = isset( $stats[ $key ] ) && is_array( $stats[ $key ] ) ? $stats[ $key ] : array();
+            $providers[ $key ] = array(
+                'label'    => $label,
+                'links'    => absint( isset( $stat['links'] ) ? $stat['links'] : 0 ),
+                'verified' => absint( isset( $stat['verified'] ) ? $stat['verified'] : 0 ),
+            );
+        }
+
+        $warnings = array_values(
+            array_unique(
+                array_filter(
+                    array_map( 'sanitize_text_field', (array) $errors )
+                )
+            )
+        );
+
+        update_option(
+            self::OBSERVABILITY_OPTION,
+            array(
+                'version'          => 1,
+                'year'             => absint( $year ),
+                'checked_at'       => current_time( 'mysql' ),
+                'providers'        => $providers,
+                'warnings_total'   => count( $warnings ),
+                'warning_messages' => array_slice( $warnings, 0, 12 ),
+            ),
+            false
+        );
+    }
+
     private static function invoke_live_private( $method_name, $arguments ) {
         try {
             $method = new ReflectionMethod( 'Sektorel_Event_Public_Opportunity_Live_Stage', $method_name );
@@ -141,6 +278,12 @@ class Sektorel_Event_Public_Opportunity_Extended_Stage {
 
     private static function queue_key( $user_id, $token ) {
         return 'sektorel_public_opportunity_live_' . absint( $user_id ) . '_' . sanitize_key( $token );
+    }
+
+    private static function is_source_center_page() {
+        $post_type = isset( $_GET['post_type'] ) ? sanitize_key( wp_unslash( $_GET['post_type'] ) ) : '';
+        $page      = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+        return 'event' === $post_type && 'sektorel-source-center' === $page;
     }
 
     private static function require_ajax() {
