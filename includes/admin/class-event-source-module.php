@@ -89,7 +89,7 @@ class Sektorel_Event_Source_Module {
             'key'              => 'public_opportunities',
             'order'            => 17,
             'label'            => 'Kamu Destekleri ve Son Başvuruları Güncelle',
-            'description'      => 'KOSGEB, İŞKUR, TÜBİTAK ve Kalkınma Ajansları resmî kaynaklarını kaynağa özel deterministic/canlı adapterlarla tarar; doğrulanmış açık/yaklaşan fırsatları taslak Event olarak günceller.',
+            'description'      => 'KOSGEB, İŞKUR, TÜBİTAK, Kalkınma Ajansları, Ticaret Bakanlığı ve Türk Eximbank resmî kaynaklarını kaynağa özel deterministic/canlı adapterlarla tarar; doğrulanmış açık/yaklaşan fırsatları taslak Event olarak günceller.',
             'prepare_action'   => 'sektorel_public_opportunities_prepare',
             'prepare_callback' => array( 'Sektorel_Event_Public_Opportunity_Extended_Stage', 'ajax_prepare' ),
             'batch_action'     => 'sektorel_public_opportunities_batch',
