@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Sektorel_Event_Public_Opportunity_Development_Agencies {
 
-    const INDEX_URL       = 'https://www.ka.gov.tr/en/supports';
+    const INDEX_URL       = 'https://ka.gov.tr/en/supports';
     const APPLICATION_URL = 'https://kaysuygulama.sanayi.gov.tr/';
 
     public static function discover( $year ) {
@@ -218,7 +218,7 @@ class Sektorel_Event_Public_Opportunity_Development_Agencies {
         $response = wp_safe_remote_get( $url, array(
             'timeout'     => 15,
             'redirection' => 3,
-            'user-agent'  => 'SektorelAjanda/1.52.1 (+https://sektorelajanda.com)',
+            'user-agent'  => 'SektorelAjanda/1.52.2 (+https://sektorelajanda.com)',
             'headers'     => array( 'Accept' => 'text/html,application/xhtml+xml' ),
         ) );
         if ( is_wp_error( $response ) ) {
