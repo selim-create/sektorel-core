@@ -82,27 +82,23 @@ class Sektorel_Event_Public_Opportunity_Development_Agencies {
     }
 
     private static function parse_entries( $text ) {
-        $entries = array();
-        $pattern = '/([^\n]{5,800}?)\s+Teklif\s+Teslimi\s+Başlangıç\s+Tarihi\s+(\d{1,2})\s+([\p{L}]+)\s+(\d{4})\s+Teklif\s+Teslimi\s+Bitiş\s+Tarihi\s+(\d{1,2})\s+([\p{L}]+)\s+(\d{4})/iu';
+        $entries  = array();
+        $agencies = self::agency_names();
+        $escaped  = array_map( static function ( $agency ) {
+            return preg_quote( $agency, '/' );
+        }, $agencies );
+
+        // Agency name is part of the regex anchor so page-level navigation text
+        // cannot be mistaken for the programme prefix after whitespace cleanup.
+        $pattern = '/(' . implode( '|', $escaped ) . ')\s+(.{5,600}?)\s+Teklif\s+Teslimi\s+Başlangıç\s+Tarihi\s+(\d{1,2})\s+([\p{L}]+)\s+(\d{4})\s+Teklif\s+Teslimi\s+Bitiş\s+Tarihi\s+(\d{1,2})\s+([\p{L}]+)\s+(\d{4})/iu';
 
         if ( ! preg_match_all( $pattern, $text, $matches, PREG_SET_ORDER ) ) {
             return $entries;
         }
 
-        $agencies = self::agency_names();
         foreach ( $matches as $match ) {
-            $prefix = self::clean_text( $match[1] );
-            $agency = '';
-            $title  = '';
-
-            foreach ( $agencies as $candidate ) {
-                if ( 0 === strpos( $prefix, $candidate ) ) {
-                    $agency = $candidate;
-                    $title  = trim( substr( $prefix, strlen( $candidate ) ) );
-                    break;
-                }
-            }
-
+            $agency = self::clean_text( $match[1] );
+            $title  = self::clean_text( $match[2] );
             if ( ! $agency || ! $title ) {
                 continue;
             }
@@ -112,8 +108,8 @@ class Sektorel_Event_Public_Opportunity_Development_Agencies {
                 continue;
             }
 
-            $start    = self::named_month_date( $match[2], $match[3], $match[4] );
-            $deadline = self::named_month_date( $match[5], $match[6], $match[7] );
+            $start    = self::named_month_date( $match[3], $match[4], $match[5] );
+            $deadline = self::named_month_date( $match[6], $match[7], $match[8] );
             if ( ! $start || ! $deadline || $deadline < $start ) {
                 continue;
             }
@@ -150,7 +146,7 @@ class Sektorel_Event_Public_Opportunity_Development_Agencies {
 
     private static function infer_audience( $title ) {
         $audience = array();
-        if ( false !== strpos( $title, 'girisim' ) || false !== strpos( $title, 'girişim' ) ) {
+        if ( false !== strpos( $title, 'girisim' ) ) {
             $audience[] = 'entrepreneur';
         }
         if ( false !== strpos( $title, 'imalat' ) || false !== strpos( $title, 'sanayi' ) || false !== strpos( $title, 'isletme' ) ) {
@@ -176,6 +172,7 @@ class Sektorel_Event_Public_Opportunity_Development_Agencies {
             'Güney Marmara Kalkınma Ajansı',
             'Kuzey Anadolu Kalkınma Ajansı',
             'Doğu Anadolu Kalkınma Ajansı',
+            'Doğu Karadeniz Kalkınma Ajansı',
             'Doğu Marmara Kalkınma Ajansı',
             'Güney Ege Kalkınma Ajansı',
             'Batı Akdeniz Kalkınma Ajansı',
@@ -183,7 +180,6 @@ class Sektorel_Event_Public_Opportunity_Development_Agencies {
             'İstanbul Kalkınma Ajansı',
             'Ankara Kalkınma Ajansı',
             'Karacadağ Kalkınma Ajansı',
-            'Kuzeydoğu Anadolu Kalkınma Ajansı',
             'Çukurova Kalkınma Ajansı',
             'Dicle Kalkınma Ajansı',
             'İpekyolu Kalkınma Ajansı',
