@@ -166,29 +166,39 @@ class Sektorel_Event_Public_Opportunity_Admin {
 
     private static function audience_label( $key ) {
         $labels = array(
-            'technology_startup'             => 'Teknoloji girişimleri',
-            'technogirisim_badge_holder'     => 'Geçerli Teknogirişim Rozeti sahipleri',
-            'kosgeb_registered_sme'          => 'KOSGEB veri tabanında kayıtlı KOBİ’ler',
-            'kosgeb_eligible_business'        => 'KOSGEB desteğine uygun işletmeler',
-            'entrepreneur'                    => 'Girişimciler',
-            'women_entrepreneur'              => 'Kadın girişimciler',
-            'young_entrepreneur'              => 'Genç girişimciler',
-            'disabled_entrepreneur'           => 'Engelli girişimciler',
-            'ex_convict_entrepreneur'         => 'Eski hükümlü girişimciler',
-            'protected_workplace_project'     => 'Korumalı işyeri projeleri',
-            'supported_employment_project'    => 'Destekli istihdam projeleri',
-            'eligible_project_organization'   => 'Uygun proje kuruluşları',
-            'iskur_eligible_applicant'         => 'İŞKUR çağrısına uygun başvuru sahipleri',
+            'technology_startup'                    => 'Teknoloji girişimleri',
+            'technogirisim_badge_holder'            => 'Geçerli Teknogirişim Rozeti sahipleri',
+            'kosgeb_registered_sme'                 => 'KOSGEB veri tabanında kayıtlı KOBİ’ler',
+            'kosgeb_eligible_business'               => 'KOSGEB desteğine uygun işletmeler',
+            'entrepreneur'                           => 'Girişimciler',
+            'women_entrepreneur'                     => 'Kadın girişimciler',
+            'young_entrepreneur'                     => 'Genç girişimciler',
+            'disabled_entrepreneur'                  => 'Engelli girişimciler',
+            'ex_convict_entrepreneur'                => 'Eski hükümlü girişimciler',
+            'protected_workplace_project'            => 'Korumalı işyeri projeleri',
+            'supported_employment_project'           => 'Destekli istihdam projeleri',
+            'eligible_project_organization'          => 'Uygun proje kuruluşları',
+            'iskur_eligible_applicant'                => 'İŞKUR çağrısına uygun başvuru sahipleri',
+            'sme'                                     => 'KOBİ’ler',
+            'company'                                 => 'Şirketler / işletmeler',
+            'research_institution'                    => 'Üniversite / araştırma kuruluşları',
+            'consortium'                              => 'Konsorsiyumlar',
+            'tubitak_eligible_organization'           => 'TÜBİTAK çağrısına uygun kuruluşlar',
+            'civil_society'                           => 'Sivil toplum kuruluşları',
+            'rural_or_agri_actor'                     => 'Kırsal / tarımsal aktörler',
+            'development_agency_eligible_applicant'   => 'Kalkınma Ajansı programına uygun başvuru sahipleri',
         );
         return isset( $labels[ $key ] ) ? $labels[ $key ] : $key;
     }
 
     private static function basis_label( $basis ) {
         $labels = array(
-            'verified_kosgeb_2026_call'    => 'Doğrulanmış KOSGEB yıllık çağrı paketi',
-            'verified_iskur_2026_4_call'   => 'Doğrulanmış İŞKUR çağrı paketi',
-            'live_kosgeb_official_detail'  => 'Canlı KOSGEB resmî detay sayfası',
-            'live_iskur_official_detail'   => 'Canlı İŞKUR resmî detay sayfası',
+            'verified_kosgeb_2026_call'                    => 'Doğrulanmış KOSGEB yıllık çağrı paketi',
+            'verified_iskur_2026_4_call'                   => 'Doğrulanmış İŞKUR çağrı paketi',
+            'live_kosgeb_official_detail'                  => 'Canlı KOSGEB resmî detay sayfası',
+            'live_iskur_official_detail'                   => 'Canlı İŞKUR resmî detay sayfası',
+            'live_tubitak_open_calls'                      => 'Canlı TÜBİTAK Açık Çağrılar',
+            'live_development_agencies_central_supports'   => 'Canlı Kalkınma Ajansları merkezî destek listesi',
         );
         return isset( $labels[ $basis ] ) ? $labels[ $basis ] : $basis;
     }
