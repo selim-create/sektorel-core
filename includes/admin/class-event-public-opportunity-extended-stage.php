@@ -4,6 +4,9 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
+require_once __DIR__ . '/class-event-public-opportunity-trade-ministry.php';
+require_once __DIR__ . '/class-event-public-opportunity-eximbank.php';
+
 /**
  * Aggregates the proven 1.51 KOSGEB/İŞKUR live engine with additional
  * deterministic public-opportunity providers.
@@ -51,8 +54,10 @@ class Sektorel_Event_Public_Opportunity_Extended_Stage {
         $stats  = isset( $base['stats'] ) && is_array( $base['stats'] ) ? $base['stats'] : array();
 
         $providers = array(
-            'tubitak' => array( 'Sektorel_Event_Public_Opportunity_Tubitak', 'discover' ),
+            'tubitak'              => array( 'Sektorel_Event_Public_Opportunity_Tubitak', 'discover' ),
             'development_agencies' => array( 'Sektorel_Event_Public_Opportunity_Development_Agencies', 'discover' ),
+            'trade_ministry'       => array( 'Sektorel_Event_Public_Opportunity_Trade_Ministry', 'discover' ),
+            'eximbank'             => array( 'Sektorel_Event_Public_Opportunity_Eximbank', 'discover' ),
         );
 
         foreach ( $providers as $provider_key => $callback ) {
