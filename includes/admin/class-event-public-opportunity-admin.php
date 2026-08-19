@@ -181,6 +181,8 @@ class Sektorel_Event_Public_Opportunity_Admin {
             'iskur_eligible_applicant'                => 'İŞKUR çağrısına uygun başvuru sahipleri',
             'sme'                                     => 'KOBİ’ler',
             'company'                                 => 'Şirketler / işletmeler',
+            'exporter'                                => 'İhracatçılar',
+            'cooperative'                             => 'Kooperatifler',
             'research_institution'                    => 'Üniversite / araştırma kuruluşları',
             'consortium'                              => 'Konsorsiyumlar',
             'tubitak_eligible_organization'           => 'TÜBİTAK çağrısına uygun kuruluşlar',
@@ -193,12 +195,14 @@ class Sektorel_Event_Public_Opportunity_Admin {
 
     private static function basis_label( $basis ) {
         $labels = array(
-            'verified_kosgeb_2026_call'                    => 'Doğrulanmış KOSGEB yıllık çağrı paketi',
-            'verified_iskur_2026_4_call'                   => 'Doğrulanmış İŞKUR çağrı paketi',
-            'live_kosgeb_official_detail'                  => 'Canlı KOSGEB resmî detay sayfası',
-            'live_iskur_official_detail'                   => 'Canlı İŞKUR resmî detay sayfası',
-            'live_tubitak_open_calls'                      => 'Canlı TÜBİTAK Açık Çağrılar',
-            'live_development_agencies_central_supports'   => 'Canlı Kalkınma Ajansları merkezî destek listesi',
+            'verified_kosgeb_2026_call'                   => 'Doğrulanmış KOSGEB yıllık çağrı paketi',
+            'verified_iskur_2026_4_call'                  => 'Doğrulanmış İŞKUR çağrı paketi',
+            'live_kosgeb_official_detail'                 => 'Canlı KOSGEB resmî detay sayfası',
+            'live_iskur_official_detail'                  => 'Canlı İŞKUR resmî detay sayfası',
+            'live_tubitak_open_calls'                     => 'Canlı TÜBİTAK Açık Çağrılar',
+            'live_development_agencies_central_supports'  => 'Canlı Kalkınma Ajansları merkezî destek listesi',
+            'live_trade_ministry_bounded_call'            => 'Canlı Ticaret Bakanlığı süreli resmî çağrısı',
+            'live_eximbank_bounded_announcement'          => 'Canlı Türk Eximbank süreli resmî duyurusu',
         );
         return isset( $labels[ $basis ] ) ? $labels[ $basis ] : $basis;
     }
