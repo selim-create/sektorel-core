@@ -72,6 +72,13 @@ class Sektorel_Event_Source_Module {
         require_once __DIR__ . '/class-event-public-opportunity-stage.php';
         Sektorel_Event_Public_Opportunity_Stage::init();
 
+        // KOSGEB's landing page does not always expose every still-active
+        // programme in the cards scanned by the live adapter. Seed verified
+        // official detail URLs into discovery only; the detail page must still
+        // be fetched and its deadline re-validated before live evidence exists.
+        require_once __DIR__ . '/class-event-public-opportunity-live-probe.php';
+        Sektorel_Event_Public_Opportunity_Live_Probe::init();
+
         require_once __DIR__ . '/class-event-public-opportunity-live-stage.php';
         Sektorel_Event_Public_Opportunity_Live_Stage::init();
 
