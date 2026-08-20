@@ -7,15 +7,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * TKDK / IPARD bounded public-opportunity provider.
  *
- * TKDK publishes the call identity/measure on an HTML announcement, while the
- * exact application dates live in the official call PDF. Production does not
- * attempt brittle PDF text extraction. Instead, a small verified call registry
- * supplies exact dates only after the matching live TKDK announcement is
- * fetched and its call/measure markers are confirmed. Unknown calls fail closed.
+ * TKDK publishes call identity/measure on HTML, while exact application dates
+ * live in the official call PDF. Production does not use brittle PDF text
+ * extraction. A small verified registry supplies exact dates only after the
+ * matching live TKDK announcement is fetched and its call markers are checked.
+ * Unknown calls fail closed.
  */
 class Sektorel_Event_Public_Opportunity_TKDK {
 
-    const APPLICATION_URL = 'https://www.tkdk.gov.tr/ProjeIslemleri/';
+    const APPLICATION_URL = 'https://onlinebasvuru.tkdk.gov.tr/';
     const DATE_BASIS      = 'live_tkdk_verified_call_announcement';
 
     public static function discover( $year ) {
@@ -28,7 +28,7 @@ class Sektorel_Event_Public_Opportunity_TKDK {
         $today = current_time( 'Y-m-d' );
 
         foreach ( self::verified_calls() as $call ) {
-            if ( (int) $call['year'] !== (int) $year ) {
+            if ( (int) $call['year'] !== (int) $year || $call['deadline'] < $today ) {
                 continue;
             }
 
@@ -42,10 +42,6 @@ class Sektorel_Event_Public_Opportunity_TKDK {
             $text = self::normalized_text( self::document_text_from_html( $html ) );
             if ( ! self::announcement_matches_call( $text, $call ) ) {
                 $result['errors'][] = 'TKDK ' . absint( $call['call_number'] ) . '. çağrı duyurusu doğrulama işaretleriyle eşleşmedi; kayıt güvenli biçimde atlandı.';
-                continue;
-            }
-
-            if ( $call['deadline'] < $today ) {
                 continue;
             }
 
@@ -65,7 +61,7 @@ class Sektorel_Event_Public_Opportunity_TKDK {
                 'title'            => 'TKDK IPARD III 11. Başvuru Çağrısı — Tarım ve Balıkçılık Ürünlerinin İşlenmesi ve Pazarlanmasına Yönelik Yatırımlar — Son Başvuru',
                 'measure'          => 'Tarım ve Balıkçılık Ürünlerinin İşlenmesi ve Pazarlanması ile ilgili Fiziki Varlıklara Yönelik Yatırımlar',
                 'announcement_url' => 'https://tkdk.gov.tr/Duyuru/ipard-iii-programi-on-birinci-basvuru-cagri-ilani-yayimlandi-13094?lang=tr',
-                'pdf_url'          => 'https://tkdk.gov.tr/Content/File/BasvuruFiles/BasvuruCagriIlani/IPARDIII/IPARDIII_OnbirinciCagriIlani.pdf',
+                'pdf_url'          => 'https://www.tkdk.gov.tr/Content/File/Duyuru/files/IPARD%20III%2011_%20Basvuru%20%C3%87agri%20Ilani.pdf',
                 'start'            => '2026-06-12',
                 'online_close'     => '2026-07-13',
                 'deadline'         => '2026-07-20',
@@ -79,8 +75,8 @@ class Sektorel_Event_Public_Opportunity_TKDK {
                 'occurrence_key'   => 'tkdk_ipard3_call_12_2026',
                 'title'            => 'TKDK IPARD III 12. Başvuru Çağrısı — Tarımsal İşletmelerin Fiziki Varlıklarına Yönelik Yatırımlar — Son Başvuru',
                 'measure'          => 'Tarımsal İşletmelerin Fiziki Varlıklarına Yönelik Yatırımlar',
-                'announcement_url' => 'https://www.tkdk.gov.tr/Duyuru/ipard-iii-program-12th-application-call-announcement-has-been-published-13111',
-                'pdf_url'          => 'https://tkdk.gov.tr/Content/File/BasvuruFiles/BasvuruCagriIlani/IPARDIII/IPARDIII_OnikinciCagriIlani.pdf',
+                'announcement_url' => 'https://www.tkdk.gov.tr/Duyuru/ipard-iii-programi-on-ikinci-basvuru-cagri-ilani-yayimlandi-13111?lang=tr',
+                'pdf_url'          => 'https://www.tkdk.gov.tr/Content/File/Duyuru/files/IPARD%20III%2012_%20Basvuru%20%C3%87agri%20Ilani.pdf',
                 'start'            => '2026-07-28',
                 'online_close'     => '2026-08-31',
                 'deadline'         => '2026-09-07',
@@ -92,10 +88,7 @@ class Sektorel_Event_Public_Opportunity_TKDK {
     }
 
     private static function announcement_matches_call( $text, $call ) {
-        if ( ! $text ) {
-            return false;
-        }
-        if ( false === strpos( $text, 'ipard iii' ) ) {
+        if ( ! $text || false === strpos( $text, 'ipard iii' ) ) {
             return false;
         }
         if ( false === strpos( $text, self::normalized_text( $call['call_marker'] ) ) ) {
@@ -114,7 +107,6 @@ class Sektorel_Event_Public_Opportunity_TKDK {
     }
 
     private static function row_from_call( $call, $today ) {
-        $status = $call['start'] > $today ? 'upcoming' : 'open';
         return array(
             'occurrence_key'       => sanitize_key( $call['occurrence_key'] ),
             'title'                => sanitize_text_field( $call['title'] ),
@@ -133,7 +125,7 @@ class Sektorel_Event_Public_Opportunity_TKDK {
             'application_url'      => self::APPLICATION_URL,
             'amount'               => '',
             'date_basis'           => self::DATE_BASIS,
-            'status'               => $status,
+            'status'               => $call['start'] > $today ? 'upcoming' : 'open',
         );
     }
 
