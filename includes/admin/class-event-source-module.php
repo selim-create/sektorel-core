@@ -29,6 +29,9 @@ class Sektorel_Event_Source_Module {
         require_once __DIR__ . '/class-event-source-background-run.php';
         Sektorel_Event_Source_Background_Run::init();
 
+        require_once __DIR__ . '/class-event-run-created-observability.php';
+        Sektorel_Event_Run_Created_Observability::init();
+
         require_once __DIR__ . '/class-event-official-calendar-stage.php';
         Sektorel_Event_Official_Calendar_Stage::init();
 
