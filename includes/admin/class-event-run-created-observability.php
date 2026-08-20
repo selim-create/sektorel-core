@@ -46,9 +46,8 @@ class Sektorel_Event_Run_Created_Observability {
             return;
         }
 
-        $run_started   = strtotime( (string) $run['started_at'] );
-        $event_created = get_post_time( 'U', true, $event_id );
-        if ( $run_started && $event_created && $event_created < ( $run_started - 5 ) ) {
+        $event_created = (string) get_post_field( 'post_date', $event_id );
+        if ( $event_created && $event_created < (string) $run['started_at'] ) {
             return;
         }
 
