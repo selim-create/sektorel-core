@@ -203,6 +203,7 @@ class Sektorel_Event_Public_Opportunity_Admin {
             'live_development_agencies_central_supports'  => 'Canlı Kalkınma Ajansları merkezî destek listesi',
             'live_trade_ministry_bounded_call'            => 'Canlı Ticaret Bakanlığı süreli resmî çağrısı',
             'live_eximbank_bounded_announcement'          => 'Canlı Türk Eximbank süreli resmî duyurusu',
+            'live_tkdk_verified_call_announcement'        => 'Canlı TKDK/IPARD doğrulanmış çağrı duyurusu',
         );
         return isset( $labels[ $basis ] ) ? $labels[ $basis ] : $basis;
     }
