@@ -6,6 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 require_once __DIR__ . '/class-event-public-opportunity-trade-ministry.php';
 require_once __DIR__ . '/class-event-public-opportunity-eximbank.php';
+require_once __DIR__ . '/class-event-public-opportunity-tkdk-v2.php';
 
 /**
  * Aggregates the proven 1.51 KOSGEB/İŞKUR live engine with additional
@@ -61,6 +62,7 @@ class Sektorel_Event_Public_Opportunity_Extended_Stage {
             'development_agencies' => array( 'Sektorel_Event_Public_Opportunity_Development_Agencies', 'discover' ),
             'trade_ministry'       => array( 'Sektorel_Event_Public_Opportunity_Trade_Ministry', 'discover' ),
             'eximbank'             => array( 'Sektorel_Event_Public_Opportunity_Eximbank', 'discover' ),
+            'tkdk'                 => array( 'Sektorel_Event_Public_Opportunity_TKDK', 'discover' ),
         );
 
         foreach ( $providers as $provider_key => $callback ) {
@@ -231,6 +233,7 @@ class Sektorel_Event_Public_Opportunity_Extended_Stage {
             'development_agencies' => 'Kalkınma Ajansları',
             'trade_ministry'       => 'Ticaret Bakanlığı',
             'eximbank'             => 'Türk Eximbank',
+            'tkdk'                 => 'TKDK / IPARD',
         );
 
         $providers = array();
@@ -254,7 +257,7 @@ class Sektorel_Event_Public_Opportunity_Extended_Stage {
         update_option(
             self::OBSERVABILITY_OPTION,
             array(
-                'version'          => 1,
+                'version'          => 2,
                 'year'             => absint( $year ),
                 'checked_at'       => current_time( 'mysql' ),
                 'providers'        => $providers,
