@@ -14,12 +14,12 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Sektorel_Event_Run_Created_Observability {
 
-    const NONCE_ACTION  = 'sektorel_source_background_run';
-    const ACTIVE_OPTION = 'sektorel_source_active_run';
-    const RUN_PREFIX    = 'sektorel_source_run_';
+    const NONCE_ACTION   = 'sektorel_source_background_run';
+    const ACTIVE_OPTION  = 'sektorel_source_active_run';
+    const RUN_PREFIX     = 'sektorel_source_run_';
     const HISTORY_OPTION = 'sektorel_source_run_history';
-    const ITEM_PREFIX   = 'sektorel_source_created_events_';
-    const MAX_ITEMS     = 50;
+    const ITEM_PREFIX    = 'sektorel_source_created_events_';
+    const MAX_ITEMS      = 50;
 
     public static function init() {
         add_action( 'added_post_meta', array( __CLASS__, 'capture_created_event' ), 40, 4 );
@@ -42,7 +42,13 @@ class Sektorel_Event_Run_Created_Observability {
         }
 
         $run = get_option( self::RUN_PREFIX . $run_id, array() );
-        if ( ! is_array( $run ) || empty( $run['stages'] ) ) {
+        if ( ! is_array( $run ) || empty( $run['stages'] ) || empty( $run['started_at'] ) ) {
+            return;
+        }
+
+        $run_started   = strtotime( (string) $run['started_at'] );
+        $event_created = get_post_time( 'U', true, $event_id );
+        if ( $run_started && $event_created && $event_created < ( $run_started - 5 ) ) {
             return;
         }
 
