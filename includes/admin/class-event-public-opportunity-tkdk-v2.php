@@ -5,17 +5,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * TKDK / IPARD bounded public-opportunity provider.
+ * TKDK / IPARD bounded public-opportunity provider, v2.
  *
- * TKDK publishes call identity/measure on HTML, while exact application dates
- * live in the official call PDF. Production does not use brittle PDF text
- * extraction. A small verified registry supplies exact dates only after the
- * matching live TKDK announcement is fetched and its call markers are checked.
- * Unknown calls fail closed.
+ * Exact application dates are taken only from a verified official call
+ * registry. A row is materialized only after the matching live TKDK HTML
+ * announcement confirms IPARD III, call identity, measure and application-call
+ * semantics. Unknown future calls fail closed.
  */
 class Sektorel_Event_Public_Opportunity_TKDK {
 
-    const APPLICATION_URL = 'https://onlinebasvuru.tkdk.gov.tr/';
+    const APPLICATION_URL = 'https://www.tkdk.gov.tr/ProjeIslemleri/';
     const DATE_BASIS      = 'live_tkdk_verified_call_announcement';
 
     public static function discover( $year ) {
@@ -28,7 +27,13 @@ class Sektorel_Event_Public_Opportunity_TKDK {
         $today = current_time( 'Y-m-d' );
 
         foreach ( self::verified_calls() as $call ) {
-            if ( (int) $call['year'] !== (int) $year || $call['deadline'] < $today ) {
+            if ( (int) $call['year'] !== (int) $year ) {
+                continue;
+            }
+
+            // Expired calls are retained in the verified registry for
+            // traceability, but are not fetched during a current scan.
+            if ( $call['deadline'] < $today ) {
                 continue;
             }
 
@@ -60,8 +65,8 @@ class Sektorel_Event_Public_Opportunity_TKDK {
                 'occurrence_key'   => 'tkdk_ipard3_call_11_2026',
                 'title'            => 'TKDK IPARD III 11. Başvuru Çağrısı — Tarım ve Balıkçılık Ürünlerinin İşlenmesi ve Pazarlanmasına Yönelik Yatırımlar — Son Başvuru',
                 'measure'          => 'Tarım ve Balıkçılık Ürünlerinin İşlenmesi ve Pazarlanması ile ilgili Fiziki Varlıklara Yönelik Yatırımlar',
-                'announcement_url' => 'https://tkdk.gov.tr/Duyuru/ipard-iii-programi-on-birinci-basvuru-cagri-ilani-yayimlandi-13094?lang=tr',
-                'pdf_url'          => 'https://www.tkdk.gov.tr/Content/File/Duyuru/files/IPARD%20III%2011_%20Basvuru%20%C3%87agri%20Ilani.pdf',
+                'announcement_url' => 'https://www.tkdk.gov.tr/Duyuru/ipard-iii-programi-on-birinci-basvuru-cagri-ilani-yayimlandi-13094',
+                'pdf_url'          => 'https://tkdk.gov.tr/Content/File/BasvuruFiles/BasvuruCagriIlani/IPARDIII/IPARDIII_OnbirinciCagriIlani.pdf',
                 'start'            => '2026-06-12',
                 'online_close'     => '2026-07-13',
                 'deadline'         => '2026-07-20',
@@ -75,8 +80,8 @@ class Sektorel_Event_Public_Opportunity_TKDK {
                 'occurrence_key'   => 'tkdk_ipard3_call_12_2026',
                 'title'            => 'TKDK IPARD III 12. Başvuru Çağrısı — Tarımsal İşletmelerin Fiziki Varlıklarına Yönelik Yatırımlar — Son Başvuru',
                 'measure'          => 'Tarımsal İşletmelerin Fiziki Varlıklarına Yönelik Yatırımlar',
-                'announcement_url' => 'https://www.tkdk.gov.tr/Duyuru/ipard-iii-programi-on-ikinci-basvuru-cagri-ilani-yayimlandi-13111?lang=tr',
-                'pdf_url'          => 'https://www.tkdk.gov.tr/Content/File/Duyuru/files/IPARD%20III%2012_%20Basvuru%20%C3%87agri%20Ilani.pdf',
+                'announcement_url' => 'https://www.tkdk.gov.tr/Duyuru/ipard-iii-programi-on-ikinci-basvuru-cagri-ilani-yayimlandi-13111',
+                'pdf_url'          => 'https://tkdk.gov.tr/Content/File/BasvuruFiles/BasvuruCagriIlani/IPARDIII/IPARDIII_OnikinciCagriIlani.pdf',
                 'start'            => '2026-07-28',
                 'online_close'     => '2026-08-31',
                 'deadline'         => '2026-09-07',
@@ -100,7 +105,12 @@ class Sektorel_Event_Public_Opportunity_TKDK {
         if ( false === strpos( $text, 'basvurular kabul edilecektir' ) && false === strpos( $text, 'basvuru cagri ilani' ) ) {
             return false;
         }
-        if ( self::contains_any( $text, array( 'desteklenmek uzere secilen', 'siralamasi aciklanmistir', 'on incelemesi tamamlanmis', 'reddine iliskin' ) ) ) {
+        if ( self::contains_any( $text, array(
+            'desteklenmek uzere secilen',
+            'siralamasi aciklanmistir',
+            'on incelemesi tamamlanmis',
+            'reddine iliskin',
+        ) ) ) {
             return false;
         }
         return true;
@@ -138,7 +148,7 @@ class Sektorel_Event_Public_Opportunity_TKDK {
         $response = wp_safe_remote_get( $url, array(
             'timeout'     => 15,
             'redirection' => 3,
-            'user-agent'  => 'SektorelAjanda/1.55.0 (+https://sektorelajanda.com)',
+            'user-agent'  => 'SektorelAjanda/1.55.1 (+https://sektorelajanda.com)',
             'headers'     => array( 'Accept' => 'text/html,application/xhtml+xml' ),
         ) );
         if ( is_wp_error( $response ) ) {
