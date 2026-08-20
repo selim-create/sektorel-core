@@ -125,7 +125,7 @@ class Sektorel_Event_Public_Opportunity_TKDK {
             'kind'                 => 'grant_call',
             'audience'             => array_values( array_unique( array_map( 'sanitize_key', $call['audience'] ) ) ),
             'description'          => sanitize_textarea_field(
-                'TKDK IPARD III ' . absint( $call['call_number'] ) . '. Başvuru Çağrısı kapsamında “' . $call['measure']'] . '” tedbirinden başvurular kabul edilmektedir. '
+                'TKDK IPARD III ' . absint( $call['call_number'] ) . '. Başvuru Çağrısı kapsamında “' . $call['measure'] . '” tedbirinden başvurular kabul edilmektedir. '
                 . 'Doğrulanmış başvuru dönemi ' . self::display_date( $call['start'] ) . ' – ' . self::display_date( $call['deadline'] ) . ' arasındadır. '
                 . 'Online Proje Başvuru Sistemi ' . self::display_date( $call['online_close'] ) . ' tarihinde kapanır; nihai başvuru paketi son teslim tarihi Event son tarihi olarak esas alınır.'
             ),
