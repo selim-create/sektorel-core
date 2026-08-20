@@ -91,8 +91,6 @@ class Sektorel_Event_Public_Opportunity_Extended_Stage {
                 : array( 'links' => 0, 'verified' => 0 );
         }
 
-        // Deduplicate provider results by stable occurrence identity before the
-        // existing 1.51 merge/fallback logic runs.
         $deduped = array();
         foreach ( $rows as $row ) {
             if ( ! is_array( $row ) || empty( $row['occurrence_key'] ) ) {
@@ -127,8 +125,6 @@ class Sektorel_Event_Public_Opportunity_Extended_Stage {
     }
 
     public static function ajax_batch() {
-        // Queue schema/key deliberately matches the existing live stage, so all
-        // proven upsert, evidence and idempotency behavior is reused unchanged.
         Sektorel_Event_Public_Opportunity_Live_Stage::ajax_batch();
     }
 
@@ -151,11 +147,13 @@ class Sektorel_Event_Public_Opportunity_Extended_Stage {
         $nonce = wp_create_nonce( self::NONCE_ACTION );
         ?>
         <style>
-            .ssc-public-opportunity-observability{margin-top:8px;padding:8px 10px;background:#f6f7f7;border-left:3px solid #2271b1;font-size:11px;line-height:1.55;color:#50575e}
+            .ssc-public-opportunity-observability{grid-column:2/-1;min-width:0;margin-top:0;padding:10px 12px;background:#f6f7f7;border-left:3px solid #2271b1;font-size:11px;line-height:1.55;color:#50575e}
             .ssc-public-opportunity-observability strong{color:#1d2327}
+            .ssc-po-list{display:flex;flex-wrap:wrap;gap:5px 14px;margin-top:4px}
+            .ssc-po-provider{display:inline-block;white-space:normal}
+            .ssc-po-meta{display:block;margin-top:6px;color:#646970}
             #ssc-public-opportunity-summary{max-width:1000px;margin-top:10px;padding:12px 14px;background:#fff;border:1px solid #dcdcde;font-size:12px;line-height:1.6}
-            #ssc-public-opportunity-summary .ssc-po-provider{display:inline-block;margin-right:14px;white-space:nowrap}
-            #ssc-public-opportunity-summary .ssc-po-meta{display:block;margin-top:5px;color:#646970}
+            @media(max-width:782px){.ssc-public-opportunity-observability{grid-column:2/-1}.ssc-po-list{gap:4px 10px}}
         </style>
         <script>
         jQuery(function($){
@@ -167,6 +165,9 @@ class Sektorel_Event_Public_Opportunity_Extended_Stage {
             function providerHtml(provider){
                 return '<span class="ssc-po-provider"><strong>'+esc(provider.label)+'</strong>: '
                     +Number(provider.links||0)+' bağlantı / '+Number(provider.verified||0)+' doğrulandı</span>';
+            }
+            function providerListHtml(providers){
+                return '<div class="ssc-po-list">'+providers.join('')+'</div>';
             }
             function render(snapshot){
                 if(!snapshot || !snapshot.providers){ return; }
@@ -183,9 +184,9 @@ class Sektorel_Event_Public_Opportunity_Extended_Stage {
                 var $stage=$('.ssc-stage[data-stage="public_opportunities"]');
                 if($stage.length){
                     $stage.find('.ssc-public-opportunity-observability').remove();
-                    $stage.find('.ssc-result').after(
-                        '<div class="ssc-public-opportunity-observability"><strong>Kaynak görünürlüğü</strong><br>'
-                        +providers.join(' · ')+'<br>'+meta+'</div>'
+                    $stage.append(
+                        '<div class="ssc-public-opportunity-observability"><strong>Kaynak görünürlüğü</strong>'
+                        +providerListHtml(providers)+'<span class="ssc-po-meta">'+meta+'</span></div>'
                     );
                 }
 
@@ -194,7 +195,7 @@ class Sektorel_Event_Public_Opportunity_Extended_Stage {
                     $summary=$('<div id="ssc-public-opportunity-summary"></div>');
                     $('#ssc-summary').after($summary);
                 }
-                $summary.html('<strong>Kamu fırsatı kaynakları</strong><br>'+providers.join('')+'<span class="ssc-po-meta">'+meta+'</span>');
+                $summary.html('<strong>Kamu fırsatı kaynakları</strong>'+providerListHtml(providers)+'<span class="ssc-po-meta">'+meta+'</span>');
             }
             function fetchSnapshot(){
                 $.post(ajaxurl,{
