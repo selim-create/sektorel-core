@@ -16,9 +16,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  * 3. Open Calls index: verifies the exact seven DIGITAL-2026 topic codes and
  *    the common 1 October 2026 submission deadline signal.
  *
- * Unknown/future calls are never inferred. The provider expires after the
- * verified deadline. All seven rows keep occurrence-specific source locators so
- * the shared opportunity engine does not collapse them by source URL.
+ * Unknown/future calls fail closed. The provider expires after the verified
+ * deadline. All seven rows keep occurrence-specific source locators so the
+ * shared opportunity engine does not collapse them by source URL.
  */
 class Sektorel_Event_Public_Opportunity_Digital_Europe {
 
@@ -67,9 +67,13 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
             return $result;
         }
 
-        $announcement_text = self::normalized_text( self::document_text_from_html( $announcement ) );
-        $info_day_text     = self::normalized_text( self::document_text_from_html( $info_day ) );
-        $open_calls_text   = self::normalized_text( self::document_text_from_html( $open_calls ) );
+        $announcement_raw = self::document_text_from_html( $announcement );
+        $info_day_raw     = self::document_text_from_html( $info_day );
+        $open_calls_raw   = self::document_text_from_html( $open_calls );
+
+        $announcement_text = self::normalized_text( $announcement_raw );
+        $info_day_text     = self::normalized_text( $info_day_raw );
+        $open_calls_text   = self::normalized_text( $open_calls_raw );
 
         if ( ! self::announcement_is_verified( $announcement_text ) ) {
             $result['errors'][] = 'Dijital Avrupa 21 Nisan 2026 duyurusunda 2026 çağrı paketinin açılışı doğrulanamadı.';
@@ -89,7 +93,7 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
             return $result;
         }
 
-        $open_calls_check = self::open_calls_are_verified( $open_calls_text, $calls );
+        $open_calls_check = self::open_calls_are_verified( $open_calls_raw, $open_calls_text, $calls );
         if ( is_wp_error( $open_calls_check ) ) {
             $result['errors'][] = $open_calls_check->get_error_message();
             return $result;
@@ -146,40 +150,32 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
         return true;
     }
 
-    private static function open_calls_are_verified( $text, $calls ) {
+    private static function open_calls_are_verified( $raw_text, $normalized_text, $calls ) {
         $known_codes = array();
         foreach ( (array) $calls as $call ) {
-            $known_codes[] = strtolower( $call['code'] );
+            $known_codes[] = strtoupper( $call['code'] );
         }
+        sort( $known_codes );
 
-        preg_match_all( '/digital 2026 [a-z0-9 ]+/i', $text, $matches );
-        $found_codes = array();
-        foreach ( (array) ( isset( $matches[0] ) ? $matches[0] : array() ) as $match ) {
-            $candidate = strtoupper( str_replace( ' ', '-', trim( $match ) ) );
-            foreach ( $known_codes as $known_code ) {
-                if ( false !== strpos( strtolower( $candidate ), $known_code ) ) {
-                    $found_codes[] = $known_code;
-                }
-            }
-        }
-        $found_codes = array_values( array_unique( $found_codes ) );
+        preg_match_all( '/DIGITAL-2026-[A-Z0-9-]+/i', (string) $raw_text, $matches );
+        $live_codes = array_map( 'strtoupper', isset( $matches[0] ) ? $matches[0] : array() );
+        $live_codes = array_values( array_unique( $live_codes ) );
+        sort( $live_codes );
 
-        foreach ( $known_codes as $known_code ) {
-            if ( false === strpos( $text, self::normalized_text( $known_code ) ) ) {
-                return new WP_Error( 'digital_europe_code_missing', 'Dijital Avrupa Açık Çağrılar sayfasında doğrulanamayan topic kodu: ' . strtoupper( $known_code ) );
+        if ( $live_codes !== $known_codes ) {
+            $unknown = array_values( array_diff( $live_codes, $known_codes ) );
+            $missing = array_values( array_diff( $known_codes, $live_codes ) );
+            if ( $unknown ) {
+                return new WP_Error( 'digital_europe_unknown_code', 'Dijital Avrupa Açık Çağrılar sayfasında henüz doğrulanmamış topic kodu görüldü: ' . implode( ', ', $unknown ) );
             }
-        }
-
-        preg_match_all( '/digital 2026 [a-z0-9 ]+/i', $text, $all_code_like );
-        foreach ( (array) ( isset( $all_code_like[0] ) ? $all_code_like[0] : array() ) as $code_like ) {
-            $normalized = trim( preg_replace( '/\s+/', ' ', strtolower( $code_like ) ) );
-            if ( 0 !== strpos( $normalized, 'digital 2026 ' ) ) {
-                continue;
+            if ( $missing ) {
+                return new WP_Error( 'digital_europe_code_missing', 'Dijital Avrupa Açık Çağrılar sayfasında doğrulanamayan topic kodu: ' . implode( ', ', $missing ) );
             }
+            return new WP_Error( 'digital_europe_code_set_mismatch', 'Dijital Avrupa Açık Çağrılar topic seti doğrulanamadı.' );
         }
 
         $deadline_signal = 'submission deadline 1 october 2026';
-        if ( substr_count( $text, $deadline_signal ) < count( $known_codes ) ) {
+        if ( substr_count( $normalized_text, $deadline_signal ) < count( $known_codes ) ) {
             return new WP_Error( 'digital_europe_deadline_missing', 'Dijital Avrupa Açık Çağrılar sayfasında 7 çağrı için 1 Ekim 2026 son başvuru sinyali doğrulanamadı.' );
         }
 
