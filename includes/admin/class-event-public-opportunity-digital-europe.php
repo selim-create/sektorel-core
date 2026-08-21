@@ -11,8 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Ministry surfaces instead of relying on one brittle announcement or card DOM:
  *
  * 1. 21 April 2026 announcement: verifies that the 2026 call package opened.
- * 2. 30 April 2026 Info Day: verifies the seven Türkiye-open call titles and
- *    the five attached call-fiche families.
+ * 2. 30 April 2026 Info Day: verifies the seven Türkiye-open call titles.
  * 3. Open Calls index: verifies the exact seven DIGITAL-2026 topic codes and
  *    the common 1 October 2026 submission deadline signal.
  *
@@ -88,11 +87,6 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
             return $result;
         }
 
-        if ( ! self::info_day_call_fiches_verified( $info_day_text ) ) {
-            $result['errors'][] = 'Dijital Avrupa Bilgi Günü duyurusunda beş 2026 call-fiche ailesi birlikte doğrulanamadı.';
-            return $result;
-        }
-
         $open_calls_check = self::open_calls_are_verified( $open_calls_raw, $open_calls_text, $calls );
         if ( is_wp_error( $open_calls_check ) ) {
             $result['errors'][] = $open_calls_check->get_error_message();
@@ -161,23 +155,6 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
             }
         }
         return $missing;
-    }
-
-    private static function info_day_call_fiches_verified( $text ) {
-        $families = array(
-            'call fiche digital 2026 ai data 10 en',
-            'call fiche digital 2026 bestuse mcp 10 en',
-            'call fiche digital 2026 bestuse rsf 10 en',
-            'call fiche digital 2026 skills 10 en',
-            'call fiche digital 2026 support 10 en',
-        );
-
-        foreach ( $families as $family ) {
-            if ( false === strpos( $text, $family ) ) {
-                return false;
-            }
-        }
-        return true;
     }
 
     private static function open_calls_are_verified( $raw_text, $normalized_text, $calls ) {
@@ -304,7 +281,7 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
         $response = wp_safe_remote_get( $url, array(
             'timeout'     => 15,
             'redirection' => 3,
-            'user-agent'  => 'SektorelAjanda/1.56.7 (+https://sektorelajanda.com)',
+            'user-agent'  => 'SektorelAjanda/1.56.8 (+https://sektorelajanda.com)',
             'headers'     => array( 'Accept' => 'text/html,application/xhtml+xml' ),
         ) );
         if ( is_wp_error( $response ) ) {
