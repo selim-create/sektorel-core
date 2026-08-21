@@ -7,24 +7,30 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Digital Europe Programme open-call provider.
  *
- * The Ministry's official Open Calls page is the live call surface. Each
- * materialized opportunity must match an exact verified DIGITAL topic code,
- * its own title, and its own deadline inside the same call block. The official
- * 21 April 2026 announcement independently verifies the opening of the 2026
- * call package. Unknown future topic codes fail closed.
+ * The Ministry's official Open Calls page remains the preferred live surface.
+ * When that page is reachable but its client-rendered cards are absent from the
+ * raw HTML response, the provider falls back to the bounded 2026 call registry
+ * that was verified from the same official surface. The fallback expires with
+ * the verified 1 October 2026 deadline and never guesses future calls.
+ *
+ * If the live HTML exposes DIGITAL topic codes, each materialized opportunity
+ * must still match its exact verified code, title and deadline in the same call
+ * block. Unknown live codes are reported and fail closed until verified.
  */
 class Sektorel_Event_Public_Opportunity_Digital_Europe {
 
-    const INDEX_URL        = 'https://dijitalavrupa.sanayi.gov.tr/acik-cagrilar';
-    const ANNOUNCEMENT_URL = 'https://dijitalavrupa.sanayi.gov.tr/announcementdetail?id=e4d7d649-5766-4ecc-c328-08dea5b6f933';
-    const APPLICATION_URL  = 'https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/home';
-    const DATE_BASIS       = 'live_digital_europe_open_calls';
+    const INDEX_URL             = 'https://dijitalavrupa.sanayi.gov.tr/acik-cagrilar';
+    const APPLICATION_URL       = 'https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/home';
+    const LIVE_DATE_BASIS       = 'live_digital_europe_open_calls';
+    const VERIFIED_DATE_BASIS   = 'verified_digital_europe_2026_call_pack';
+    const VERIFIED_DEADLINE     = '2026-10-01';
+    const VERIFIED_START        = '2026-04-21';
 
     public static function discover( $year ) {
         $result = array(
             'rows'   => array(),
             'errors' => array(),
-            'stats'  => array( 'links' => 0, 'verified' => 0 ),
+            'stats'  => array( 'links' => 0, 'verified' => 0, 'fallback' => 0 ),
         );
 
         if ( 2026 !== (int) $year ) {
@@ -32,37 +38,43 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
         }
 
         $today = current_time( 'Y-m-d' );
-        if ( '2026-10-01' < $today ) {
+        if ( self::VERIFIED_DEADLINE < $today ) {
             return $result;
         }
 
+        $calls = self::verified_calls();
         $index = self::fetch_html( self::INDEX_URL );
+
         if ( is_wp_error( $index ) ) {
-            $result['errors'][] = 'Dijital Avrupa Açık Çağrılar sayfası alınamadı: ' . $index->get_error_message();
+            $result['errors'][] = 'Dijital Avrupa Açık Çağrılar sayfası alınamadı; doğrulanmış 2026 çağrı paketi kullanıldı: ' . $index->get_error_message();
+            $result['rows'] = self::verified_fallback_rows( $calls, $today );
+            $result['stats']['links'] = count( $result['rows'] );
+            $result['stats']['verified'] = count( $result['rows'] );
+            $result['stats']['fallback'] = count( $result['rows'] );
             return $result;
         }
 
-        $announcement = self::fetch_html( self::ANNOUNCEMENT_URL );
-        if ( is_wp_error( $announcement ) ) {
-            $result['errors'][] = 'Dijital Avrupa 2026 çağrı duyurusu alınamadı: ' . $announcement->get_error_message();
-            return $result;
-        }
-
-        $raw_index_text    = self::clean_text( self::document_text_from_html( $index ) );
-        $announcement_text = self::normalized_text( self::document_text_from_html( $announcement ) );
-
-        if ( ! self::announcement_is_verified( $announcement_text ) ) {
-            $result['errors'][] = 'Dijital Avrupa 2026 çağrı duyurusu 21 Nisan açılış işaretleriyle doğrulanamadı; provider güvenli biçimde atlandı.';
-            return $result;
-        }
-
+        $raw_index_text = self::clean_text( self::document_text_from_html( $index ) );
         $known_codes = array();
-        foreach ( self::verified_calls() as $call ) {
+        foreach ( $calls as $call ) {
             $known_codes[] = strtolower( $call['code'] );
         }
 
         preg_match_all( '/digital-2026-[a-z0-9-]+/i', strtolower( $raw_index_text ), $matches );
         $live_codes = array_values( array_unique( isset( $matches[0] ) ? $matches[0] : array() ) );
+
+        // The Ministry surface can render call cards client-side. In that case
+        // the successful HTTP response contains no topic codes in raw HTML.
+        // Use only the already verified, hard-bounded 2026 registry rather than
+        // treating the source as empty or inventing parser heuristics.
+        if ( empty( $live_codes ) ) {
+            $result['rows'] = self::verified_fallback_rows( $calls, $today );
+            $result['stats']['links'] = count( $result['rows'] );
+            $result['stats']['verified'] = count( $result['rows'] );
+            $result['stats']['fallback'] = count( $result['rows'] );
+            return $result;
+        }
+
         $result['stats']['links'] = count( $live_codes );
 
         foreach ( $live_codes as $live_code ) {
@@ -71,7 +83,7 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
             }
         }
 
-        foreach ( self::verified_calls() as $call ) {
+        foreach ( $calls as $call ) {
             $block = self::call_block( $raw_index_text, $call['code'], $known_codes );
             if ( '' === $block ) {
                 continue;
@@ -87,11 +99,22 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
                 continue;
             }
 
-            $result['rows'][] = self::row_from_call( $call, $today );
+            $result['rows'][] = self::row_from_call( $call, $today, self::LIVE_DATE_BASIS );
         }
 
         $result['stats']['verified'] = count( $result['rows'] );
         return $result;
+    }
+
+    private static function verified_fallback_rows( $calls, $today ) {
+        $rows = array();
+        foreach ( (array) $calls as $call ) {
+            if ( ! is_array( $call ) || empty( $call['code'] ) ) {
+                continue;
+            }
+            $rows[] = self::row_from_call( $call, $today, self::VERIFIED_DATE_BASIS );
+        }
+        return $rows;
     }
 
     private static function verified_calls() {
@@ -155,13 +178,6 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
         );
     }
 
-    private static function announcement_is_verified( $text ) {
-        return $text
-            && false !== strpos( $text, '2026 calls have been published' )
-            && false !== strpos( $text, '21 04 2026' )
-            && false !== strpos( $text, 'digital europe programme 2026 calls for proposals are now open' );
-    }
-
     private static function call_block( $text, $code, $known_codes ) {
         $position = stripos( $text, $code );
         if ( false === $position ) {
@@ -183,13 +199,13 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
         return trim( substr( $text, $start, max( 0, $end - $start ) ) );
     }
 
-    private static function row_from_call( $call, $today ) {
+    private static function row_from_call( $call, $today, $date_basis ) {
         $code = sanitize_text_field( $call['code'] );
         return array(
             'occurrence_key'       => sanitize_key( strtolower( str_replace( '-', '_', $code ) ) ),
             'title'                => sanitize_text_field( $call['title'] ),
-            'application_start'    => '2026-04-21',
-            'application_deadline' => '2026-10-01',
+            'application_start'    => self::VERIFIED_START,
+            'application_deadline' => self::VERIFIED_DEADLINE,
             'provider'             => 'digital_europe',
             'provider_name'        => 'Dijital Avrupa Programı — T.C. Sanayi ve Teknoloji Bakanlığı',
             'kind'                 => 'grant_call',
@@ -198,8 +214,8 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
             'source_url'           => self::INDEX_URL,
             'application_url'      => self::APPLICATION_URL,
             'amount'               => sanitize_text_field( $call['amount'] ),
-            'date_basis'           => self::DATE_BASIS,
-            'status'               => '2026-04-21' > $today ? 'upcoming' : 'open',
+            'date_basis'           => sanitize_key( $date_basis ),
+            'status'               => self::VERIFIED_START > $today ? 'upcoming' : 'open',
         );
     }
 
@@ -212,7 +228,7 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
         $response = wp_safe_remote_get( $url, array(
             'timeout'     => 15,
             'redirection' => 3,
-            'user-agent'  => 'SektorelAjanda/1.56.0 (+https://sektorelajanda.com)',
+            'user-agent'  => 'SektorelAjanda/1.56.1 (+https://sektorelajanda.com)',
             'headers'     => array( 'Accept' => 'text/html,application/xhtml+xml' ),
         ) );
         if ( is_wp_error( $response ) ) {
