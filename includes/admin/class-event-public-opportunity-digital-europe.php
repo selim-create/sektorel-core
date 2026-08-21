@@ -9,11 +9,11 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * The Ministry's official Open Calls page remains the preferred live surface.
  * When that page is reachable but its client-rendered cards are absent from the
- * raw HTML response, the provider falls back to the bounded 2026 call registry
+ * visible DOM response, the provider falls back to the bounded 2026 call registry
  * that was verified from the same official surface. The fallback expires with
  * the verified 1 October 2026 deadline and never guesses future calls.
  *
- * If the live HTML exposes DIGITAL topic codes, each materialized opportunity
+ * If the visible DOM exposes DIGITAL topic codes, each materialized opportunity
  * must still match its exact verified code, title and deadline in the same call
  * block. Unknown live codes are reported and fail closed until verified.
  */
@@ -63,10 +63,10 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
         preg_match_all( '/digital-2026-[a-z0-9-]+/i', strtolower( $raw_index_text ), $matches );
         $live_codes = array_values( array_unique( isset( $matches[0] ) ? $matches[0] : array() ) );
 
-        // The Ministry surface can render call cards client-side. In that case
-        // the successful HTTP response contains no topic codes in raw HTML.
-        // Use only the already verified, hard-bounded 2026 registry rather than
-        // treating the source as empty or inventing parser heuristics.
+        // The Ministry surface can render call cards client-side. Script/hydration
+        // payloads are intentionally excluded from document_text_from_html(). If
+        // no topic code exists in the visible DOM, use only the already verified,
+        // hard-bounded 2026 registry rather than treating hydration JSON as live UI.
         if ( empty( $live_codes ) ) {
             $result['rows'] = self::verified_fallback_rows( $calls, $today );
             $result['stats']['links'] = count( $result['rows'] );
@@ -228,7 +228,7 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
         $response = wp_safe_remote_get( $url, array(
             'timeout'     => 15,
             'redirection' => 3,
-            'user-agent'  => 'SektorelAjanda/1.56.1 (+https://sektorelajanda.com)',
+            'user-agent'  => 'SektorelAjanda/1.56.2 (+https://sektorelajanda.com)',
             'headers'     => array( 'Accept' => 'text/html,application/xhtml+xml' ),
         ) );
         if ( is_wp_error( $response ) ) {
@@ -250,6 +250,7 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
         if ( ! class_exists( 'DOMDocument' ) ) {
             return '';
         }
+
         $dom = new DOMDocument();
         $previous = libxml_use_internal_errors( true );
         $loaded = $dom->loadHTML( '<?xml encoding="utf-8" ?>' . (string) $html, LIBXML_NOWARNING | LIBXML_NOERROR );
@@ -258,8 +259,22 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
         if ( ! $loaded ) {
             return '';
         }
+
         $xpath = new DOMXPath( $dom );
-        $body  = $xpath->query( '//body' )->item( 0 );
+        foreach ( array( '//script', '//style', '//noscript', '//template' ) as $query ) {
+            $nodes = $xpath->query( $query );
+            if ( ! $nodes ) {
+                continue;
+            }
+            for ( $index = $nodes->length - 1; $index >= 0; $index-- ) {
+                $node = $nodes->item( $index );
+                if ( $node && $node->parentNode ) {
+                    $node->parentNode->removeChild( $node );
+                }
+            }
+        }
+
+        $body = $xpath->query( '//body' )->item( 0 );
         return $body ? self::clean_text( $body->textContent ) : '';
     }
 
