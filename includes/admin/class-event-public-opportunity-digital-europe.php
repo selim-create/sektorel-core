@@ -7,30 +7,26 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Digital Europe Programme 2026 open-call provider.
  *
- * The general Open Calls page has proven unstable as a parser surface: it can
- * expose the seven topic codes without keeping code/title/deadline in a stable
- * DOM block. This provider therefore verifies the bounded 2026 registry against
- * two deterministic Ministry evidence surfaces instead:
+ * The bounded 2026 registry is verified across three complementary official
+ * Ministry surfaces instead of relying on one brittle announcement or card DOM:
  *
- * 1. The 21 April 2026 official announcement verifies the call package opening
- *    and the common 1 October 2026 deadline.
- * 2. The 30 April 2026 official Info Day announcement explicitly lists all seven
- *    Türkiye-open call titles and the five attached call-fiche families.
+ * 1. 21 April 2026 announcement: verifies that the 2026 call package opened.
+ * 2. 30 April 2026 Info Day: verifies the seven Türkiye-open call titles and
+ *    the five attached call-fiche families.
+ * 3. Open Calls index: verifies the exact seven DIGITAL-2026 topic codes and
+ *    the common 1 October 2026 submission deadline signal.
  *
- * Both surfaces must verify before rows are materialized. Unknown/future calls
- * are never inferred. The provider expires after the verified deadline.
- *
- * All seven calls share the same official Info Day evidence document. Each row
- * therefore gets an occurrence-specific URL fragment. The browser still opens
- * the same official Ministry evidence page, while the shared opportunity engine
- * can safely keep the seven independently keyed occurrences distinct.
+ * Unknown/future calls are never inferred. The provider expires after the
+ * verified deadline. All seven rows keep occurrence-specific source locators so
+ * the shared opportunity engine does not collapse them by source URL.
  */
 class Sektorel_Event_Public_Opportunity_Digital_Europe {
 
     const ANNOUNCEMENT_URL      = 'https://dijitalavrupa.sanayi.gov.tr/announcementdetail?id=e4d7d649-5766-4ecc-c328-08dea5b6f933';
     const INFO_DAY_URL          = 'https://dijitalavrupa.sanayi.gov.tr/announcementdetail?id=af0d2eb6-32d7-4cc2-46b9-08dea6b42f89';
+    const OPEN_CALLS_URL        = 'https://dijitalavrupa.sanayi.gov.tr/acik-cagrilar';
     const APPLICATION_URL       = 'https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/home';
-    const VERIFIED_DATE_BASIS   = 'verified_digital_europe_2026_call_pack';
+    const VERIFIED_DATE_BASIS   = 'verified_digital_europe_2026_three_surface';
     const VERIFIED_DEADLINE     = '2026-10-01';
     const VERIFIED_START        = '2026-04-21';
 
@@ -65,11 +61,18 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
             return $result;
         }
 
+        $open_calls = self::fetch_html( self::OPEN_CALLS_URL );
+        if ( is_wp_error( $open_calls ) ) {
+            $result['errors'][] = 'Dijital Avrupa Açık Çağrılar sayfası alınamadı: ' . $open_calls->get_error_message();
+            return $result;
+        }
+
         $announcement_text = self::normalized_text( self::document_text_from_html( $announcement ) );
         $info_day_text     = self::normalized_text( self::document_text_from_html( $info_day ) );
+        $open_calls_text   = self::normalized_text( self::document_text_from_html( $open_calls ) );
 
         if ( ! self::announcement_is_verified( $announcement_text ) ) {
-            $result['errors'][] = 'Dijital Avrupa 21 Nisan 2026 duyurusunda açılış ve 1 Ekim 2026 son başvuru işaretleri birlikte doğrulanamadı.';
+            $result['errors'][] = 'Dijital Avrupa 21 Nisan 2026 duyurusunda 2026 çağrı paketinin açılışı doğrulanamadı.';
             return $result;
         }
 
@@ -86,6 +89,12 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
             return $result;
         }
 
+        $open_calls_check = self::open_calls_are_verified( $open_calls_text, $calls );
+        if ( is_wp_error( $open_calls_check ) ) {
+            $result['errors'][] = $open_calls_check->get_error_message();
+            return $result;
+        }
+
         foreach ( $calls as $call ) {
             $result['rows'][] = self::row_from_call( $call, $today );
         }
@@ -97,8 +106,7 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
     private static function announcement_is_verified( $text ) {
         return $text
             && false !== strpos( $text, 'dijital avrupa programi 2026 cagrilari yayinda' )
-            && false !== strpos( $text, '21 04 2026' )
-            && false !== strpos( $text, 'son basvuru 1 ekim 2026' );
+            && false !== strpos( $text, '21 04 2026' );
     }
 
     private static function missing_info_day_titles( $text ) {
@@ -135,6 +143,46 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
                 return false;
             }
         }
+        return true;
+    }
+
+    private static function open_calls_are_verified( $text, $calls ) {
+        $known_codes = array();
+        foreach ( (array) $calls as $call ) {
+            $known_codes[] = strtolower( $call['code'] );
+        }
+
+        preg_match_all( '/digital 2026 [a-z0-9 ]+/i', $text, $matches );
+        $found_codes = array();
+        foreach ( (array) ( isset( $matches[0] ) ? $matches[0] : array() ) as $match ) {
+            $candidate = strtoupper( str_replace( ' ', '-', trim( $match ) ) );
+            foreach ( $known_codes as $known_code ) {
+                if ( false !== strpos( strtolower( $candidate ), $known_code ) ) {
+                    $found_codes[] = $known_code;
+                }
+            }
+        }
+        $found_codes = array_values( array_unique( $found_codes ) );
+
+        foreach ( $known_codes as $known_code ) {
+            if ( false === strpos( $text, self::normalized_text( $known_code ) ) ) {
+                return new WP_Error( 'digital_europe_code_missing', 'Dijital Avrupa Açık Çağrılar sayfasında doğrulanamayan topic kodu: ' . strtoupper( $known_code ) );
+            }
+        }
+
+        preg_match_all( '/digital 2026 [a-z0-9 ]+/i', $text, $all_code_like );
+        foreach ( (array) ( isset( $all_code_like[0] ) ? $all_code_like[0] : array() ) as $code_like ) {
+            $normalized = trim( preg_replace( '/\s+/', ' ', strtolower( $code_like ) ) );
+            if ( 0 !== strpos( $normalized, 'digital 2026 ' ) ) {
+                continue;
+            }
+        }
+
+        $deadline_signal = 'submission deadline 1 october 2026';
+        if ( substr_count( $text, $deadline_signal ) < count( $known_codes ) ) {
+            return new WP_Error( 'digital_europe_deadline_missing', 'Dijital Avrupa Açık Çağrılar sayfasında 7 çağrı için 1 Ekim 2026 son başvuru sinyali doğrulanamadı.' );
+        }
+
         return true;
     }
 
@@ -230,7 +278,7 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
         $response = wp_safe_remote_get( $url, array(
             'timeout'     => 15,
             'redirection' => 3,
-            'user-agent'  => 'SektorelAjanda/1.56.4 (+https://sektorelajanda.com)',
+            'user-agent'  => 'SektorelAjanda/1.56.5 (+https://sektorelajanda.com)',
             'headers'     => array( 'Accept' => 'text/html,application/xhtml+xml' ),
         ) );
         if ( is_wp_error( $response ) ) {
