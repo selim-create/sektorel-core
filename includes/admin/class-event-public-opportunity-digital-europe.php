@@ -7,10 +7,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Digital Europe Programme open-call provider.
  *
- * The Ministry's official Open Calls page is used as the live surface. Each
- * materialized opportunity must match an exact verified DIGITAL topic code on
- * that page. The official 21 April 2026 announcement independently verifies
- * the common call opening and deadline. Unknown future topic codes fail closed.
+ * The Ministry's official Open Calls page is the live call surface. Each
+ * materialized opportunity must match an exact verified DIGITAL topic code,
+ * its own title, and its own deadline inside the same call block. The official
+ * 21 April 2026 announcement independently verifies the opening of the 2026
+ * call package. Unknown future topic codes fail closed.
  */
 class Sektorel_Event_Public_Opportunity_Digital_Europe {
 
@@ -47,11 +48,11 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
             return $result;
         }
 
-        $index_text        = self::normalized_text( self::document_text_from_html( $index ) );
+        $raw_index_text    = self::clean_text( self::document_text_from_html( $index ) );
         $announcement_text = self::normalized_text( self::document_text_from_html( $announcement ) );
 
         if ( ! self::announcement_is_verified( $announcement_text ) ) {
-            $result['errors'][] = 'Dijital Avrupa 2026 çağrı duyurusu açılış/son başvuru işaretleriyle doğrulanamadı; provider güvenli biçimde atlandı.';
+            $result['errors'][] = 'Dijital Avrupa 2026 çağrı duyurusu 21 Nisan açılış işaretleriyle doğrulanamadı; provider güvenli biçimde atlandı.';
             return $result;
         }
 
@@ -60,8 +61,10 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
             $known_codes[] = strtolower( $call['code'] );
         }
 
-        preg_match_all( '/digital-2026-[a-z0-9-]+/i', strtolower( self::clean_text( self::document_text_from_html( $index ) ) ), $matches );
+        preg_match_all( '/digital-2026-[a-z0-9-]+/i', strtolower( $raw_index_text ), $matches );
         $live_codes = array_values( array_unique( isset( $matches[0] ) ? $matches[0] : array() ) );
+        $result['stats']['links'] = count( $live_codes );
+
         foreach ( $live_codes as $live_code ) {
             if ( ! in_array( strtolower( $live_code ), $known_codes, true ) ) {
                 $result['errors'][] = 'Dijital Avrupa Açık Çağrılar sayfasında henüz doğrulanmamış yeni topic kodu görüldü: ' . sanitize_text_field( strtoupper( $live_code ) );
@@ -69,18 +72,21 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
         }
 
         foreach ( self::verified_calls() as $call ) {
-            $code_key = self::normalized_text( $call['code'] );
-            if ( false === strpos( $index_text, $code_key ) ) {
+            $block = self::call_block( $raw_index_text, $call['code'], $known_codes );
+            if ( '' === $block ) {
                 continue;
             }
 
-            $title_key = self::normalized_text( $call['source_title'] );
-            if ( false === strpos( $index_text, $title_key ) ) {
-                $result['errors'][] = 'Dijital Avrupa topic kodu bulundu ancak başlık eşleşmedi: ' . sanitize_text_field( $call['code'] );
+            $block_key = self::normalized_text( $block );
+            if ( false === strpos( $block_key, self::normalized_text( $call['source_title'] ) ) ) {
+                $result['errors'][] = 'Dijital Avrupa topic kodu bulundu ancak aynı çağrı bloğunda başlık eşleşmedi: ' . sanitize_text_field( $call['code'] );
+                continue;
+            }
+            if ( false === strpos( $block_key, 'submission deadline 1 october 2026' ) ) {
+                $result['errors'][] = 'Dijital Avrupa topic kodu bulundu ancak aynı çağrı bloğunda 1 Ekim 2026 son başvurusu doğrulanamadı: ' . sanitize_text_field( $call['code'] );
                 continue;
             }
 
-            $result['stats']['links']++;
             $result['rows'][] = self::row_from_call( $call, $today );
         }
 
@@ -151,9 +157,30 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
 
     private static function announcement_is_verified( $text ) {
         return $text
-            && false !== strpos( $text, 'dijital avrupa programi 2026 cagrilari' )
+            && false !== strpos( $text, '2026 calls have been published' )
             && false !== strpos( $text, '21 04 2026' )
-            && false !== strpos( $text, '1 ekim 2026' );
+            && false !== strpos( $text, 'digital europe programme 2026 calls for proposals are now open' );
+    }
+
+    private static function call_block( $text, $code, $known_codes ) {
+        $position = stripos( $text, $code );
+        if ( false === $position ) {
+            return '';
+        }
+
+        $start = max( 0, $position - 220 );
+        $end   = strlen( $text );
+        foreach ( (array) $known_codes as $other_code ) {
+            if ( 0 === strcasecmp( $other_code, $code ) ) {
+                continue;
+            }
+            $other_position = stripos( $text, $other_code, $position + strlen( $code ) );
+            if ( false !== $other_position && $other_position < $end ) {
+                $end = $other_position;
+            }
+        }
+
+        return trim( substr( $text, $start, max( 0, $end - $start ) ) );
     }
 
     private static function row_from_call( $call, $today ) {
