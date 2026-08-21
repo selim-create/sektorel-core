@@ -156,6 +156,8 @@ class Sektorel_Event_Public_Opportunity_Extended_Stage {
             .ssc-po-list{display:flex;flex-wrap:wrap;gap:5px 14px;margin-top:4px}
             .ssc-po-provider{display:inline-block;white-space:normal}
             .ssc-po-meta{display:block;margin-top:6px;color:#646970}
+            .ssc-po-warnings{margin-top:7px;padding-top:7px;border-top:1px solid #dcdcde;color:#8a2424}
+            .ssc-po-warning{display:block;margin-top:3px;word-break:break-word}
             #ssc-public-opportunity-summary{max-width:1000px;margin-top:10px;padding:12px 14px;background:#fff;border:1px solid #dcdcde;font-size:12px;line-height:1.6}
             @media(max-width:782px){.ssc-public-opportunity-observability{grid-column:2/-1}.ssc-po-list{gap:4px 10px}}
         </style>
@@ -173,6 +175,12 @@ class Sektorel_Event_Public_Opportunity_Extended_Stage {
             function providerListHtml(providers){
                 return '<div class="ssc-po-list">'+providers.join('')+'</div>';
             }
+            function warningsHtml(messages){
+                if(!Array.isArray(messages) || !messages.length){ return ''; }
+                var items=[];
+                messages.forEach(function(message){ items.push('<span class="ssc-po-warning">'+esc(message)+'</span>'); });
+                return '<div class="ssc-po-warnings"><strong>Provider uyarıları</strong>'+items.join('')+'</div>';
+            }
             function render(snapshot){
                 if(!snapshot || !snapshot.providers){ return; }
                 var signature=JSON.stringify(snapshot);
@@ -182,6 +190,7 @@ class Sektorel_Event_Public_Opportunity_Extended_Stage {
                 var providers=[];
                 Object.keys(snapshot.providers).forEach(function(key){ providers.push(providerHtml(snapshot.providers[key])); });
                 var warningCount=Number(snapshot.warnings_total||0);
+                var warnings=warningsHtml(snapshot.warning_messages||[]);
                 var meta='Son canlı keşif: '+esc(snapshot.checked_at||'—')+' · '+Number(snapshot.year||0);
                 if(warningCount){ meta+=' · Uyarı: '+warningCount; }
 
@@ -190,7 +199,7 @@ class Sektorel_Event_Public_Opportunity_Extended_Stage {
                     $stage.find('.ssc-public-opportunity-observability').remove();
                     $stage.append(
                         '<div class="ssc-public-opportunity-observability"><strong>Kaynak görünürlüğü</strong>'
-                        +providerListHtml(providers)+'<span class="ssc-po-meta">'+meta+'</span></div>'
+                        +providerListHtml(providers)+'<span class="ssc-po-meta">'+meta+'</span>'+warnings+'</div>'
                     );
                 }
 
@@ -199,7 +208,7 @@ class Sektorel_Event_Public_Opportunity_Extended_Stage {
                     $summary=$('<div id="ssc-public-opportunity-summary"></div>');
                     $('#ssc-summary').after($summary);
                 }
-                $summary.html('<strong>Kamu fırsatı kaynakları</strong>'+providerListHtml(providers)+'<span class="ssc-po-meta">'+meta+'</span>');
+                $summary.html('<strong>Kamu fırsatı kaynakları</strong>'+providerListHtml(providers)+'<span class="ssc-po-meta">'+meta+'</span>'+warnings);
             }
             function fetchSnapshot(){
                 $.post(ajaxurl,{
@@ -260,7 +269,7 @@ class Sektorel_Event_Public_Opportunity_Extended_Stage {
         update_option(
             self::OBSERVABILITY_OPTION,
             array(
-                'version'          => 3,
+                'version'          => 4,
                 'year'             => absint( $year ),
                 'checked_at'       => current_time( 'mysql' ),
                 'providers'        => $providers,
