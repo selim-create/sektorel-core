@@ -108,7 +108,24 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
     }
 
     private static function announcement_is_verified( $text ) {
-        if ( ! $text || false === strpos( $text, '21 04 2026' ) ) {
+        if ( ! $text ) {
+            return false;
+        }
+
+        $date_markers = array(
+            '21 04 2026',
+            '21 april 2026',
+            '21 apr 2026',
+        );
+
+        $date_verified = false;
+        foreach ( $date_markers as $date_marker ) {
+            if ( false !== strpos( $text, $date_marker ) ) {
+                $date_verified = true;
+                break;
+            }
+        }
+        if ( ! $date_verified ) {
             return false;
         }
 
@@ -287,7 +304,7 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
         $response = wp_safe_remote_get( $url, array(
             'timeout'     => 15,
             'redirection' => 3,
-            'user-agent'  => 'SektorelAjanda/1.56.6 (+https://sektorelajanda.com)',
+            'user-agent'  => 'SektorelAjanda/1.56.7 (+https://sektorelajanda.com)',
             'headers'     => array( 'Accept' => 'text/html,application/xhtml+xml' ),
         ) );
         if ( is_wp_error( $response ) ) {
