@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * 1. 21 April 2026 announcement: verifies that the 2026 call package opened.
  * 2. 30 April 2026 Info Day: verifies the seven Türkiye-open call titles.
  * 3. Open Calls index: verifies the exact seven DIGITAL-2026 topic codes and
- *    the common 1 October 2026 submission deadline signal.
+ *    seven submission-deadline labels plus seven 1 October 2026 date signals.
  *
  * Unknown/future calls fail closed. The provider expires after the verified
  * deadline. All seven rows keep occurrence-specific source locators so the
@@ -181,9 +181,18 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
             return new WP_Error( 'digital_europe_code_set_mismatch', 'Dijital Avrupa Açık Çağrılar topic seti doğrulanamadı.' );
         }
 
-        $deadline_signal = 'submission deadline 1 october 2026';
-        if ( substr_count( $normalized_text, $deadline_signal ) < count( $known_codes ) ) {
-            return new WP_Error( 'digital_europe_deadline_missing', 'Dijital Avrupa Açık Çağrılar sayfasında 7 çağrı için 1 Ekim 2026 son başvuru sinyali doğrulanamadı.' );
+        $required_count = count( $known_codes );
+        $deadline_label_count = substr_count( $normalized_text, 'submission deadline' );
+        $deadline_date_count  = substr_count( $normalized_text, '1 october 2026' );
+        if ( $deadline_label_count < $required_count || $deadline_date_count < $required_count ) {
+            return new WP_Error(
+                'digital_europe_deadline_missing',
+                sprintf(
+                    'Dijital Avrupa Açık Çağrılar sayfasında 7 çağrı için son başvuru sinyalleri doğrulanamadı (etiket: %d/7, tarih: %d/7).',
+                    $deadline_label_count,
+                    $deadline_date_count
+                )
+            );
         }
 
         return true;
@@ -281,7 +290,7 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
         $response = wp_safe_remote_get( $url, array(
             'timeout'     => 15,
             'redirection' => 3,
-            'user-agent'  => 'SektorelAjanda/1.56.8 (+https://sektorelajanda.com)',
+            'user-agent'  => 'SektorelAjanda/1.56.10 (+https://sektorelajanda.com)',
             'headers'     => array( 'Accept' => 'text/html,application/xhtml+xml' ),
         ) );
         if ( is_wp_error( $response ) ) {
