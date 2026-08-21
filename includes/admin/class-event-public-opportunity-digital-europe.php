@@ -19,6 +19,11 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * Both surfaces must verify before rows are materialized. Unknown/future calls
  * are never inferred. The provider expires after the verified deadline.
+ *
+ * All seven calls share the same official Info Day evidence document. Each row
+ * therefore gets an occurrence-specific URL fragment. The browser still opens
+ * the same official Ministry evidence page, while the shared opportunity engine
+ * can safely keep the seven independently keyed occurrences distinct.
  */
 class Sektorel_Event_Public_Opportunity_Digital_Europe {
 
@@ -196,6 +201,8 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
 
     private static function row_from_call( $call, $today ) {
         $code = sanitize_text_field( $call['code'] );
+        $source_locator = self::INFO_DAY_URL . '#call-' . strtolower( $code );
+
         return array(
             'occurrence_key'       => sanitize_key( strtolower( str_replace( '-', '_', $code ) ) ),
             'title'                => sanitize_text_field( $call['title'] ),
@@ -206,7 +213,7 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
             'kind'                 => 'grant_call',
             'audience'             => array_values( array_unique( array_map( 'sanitize_key', $call['audience'] ) ) ),
             'description'          => sanitize_textarea_field( $call['description'] . ' Topic kodu: ' . $code . '.' ),
-            'source_url'           => self::INFO_DAY_URL,
+            'source_url'           => esc_url_raw( $source_locator, array( 'http', 'https' ) ),
             'application_url'      => self::APPLICATION_URL,
             'amount'               => sanitize_text_field( $call['amount'] ),
             'date_basis'           => self::VERIFIED_DATE_BASIS,
@@ -223,7 +230,7 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
         $response = wp_safe_remote_get( $url, array(
             'timeout'     => 15,
             'redirection' => 3,
-            'user-agent'  => 'SektorelAjanda/1.56.3 (+https://sektorelajanda.com)',
+            'user-agent'  => 'SektorelAjanda/1.56.4 (+https://sektorelajanda.com)',
             'headers'     => array( 'Accept' => 'text/html,application/xhtml+xml' ),
         ) );
         if ( is_wp_error( $response ) ) {
