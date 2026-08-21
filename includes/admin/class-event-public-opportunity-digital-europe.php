@@ -108,9 +108,22 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
     }
 
     private static function announcement_is_verified( $text ) {
-        return $text
-            && false !== strpos( $text, 'dijital avrupa programi 2026 cagrilari yayinda' )
-            && false !== strpos( $text, '21 04 2026' );
+        if ( ! $text || false === strpos( $text, '21 04 2026' ) ) {
+            return false;
+        }
+
+        $opening_markers = array(
+            'dijital avrupa programi 2026 cagrilari yayinda',
+            'digital europe programme 2026 calls for proposals are now open',
+            '2026 calls have been published',
+        );
+
+        foreach ( $opening_markers as $marker ) {
+            if ( false !== strpos( $text, $marker ) ) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static function missing_info_day_titles( $text ) {
@@ -274,7 +287,7 @@ class Sektorel_Event_Public_Opportunity_Digital_Europe {
         $response = wp_safe_remote_get( $url, array(
             'timeout'     => 15,
             'redirection' => 3,
-            'user-agent'  => 'SektorelAjanda/1.56.5 (+https://sektorelajanda.com)',
+            'user-agent'  => 'SektorelAjanda/1.56.6 (+https://sektorelajanda.com)',
             'headers'     => array( 'Accept' => 'text/html,application/xhtml+xml' ),
         ) );
         if ( is_wp_error( $response ) ) {
