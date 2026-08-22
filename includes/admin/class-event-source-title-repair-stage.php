@@ -240,7 +240,24 @@ class Sektorel_Event_Source_Title_Repair_Stage {
         update_post_meta( $candidate_id, 'candidate_title_source', 'verified_source_page_identity' );
         update_post_meta( $candidate_id, 'candidate_title_repaired_at', current_time( 'mysql' ) );
         delete_post_meta( $candidate_id, 'candidate_match_signature' );
+        self::refresh_html_triage( $candidate_id );
         return true;
+    }
+
+    private static function refresh_html_triage( $candidate_id ) {
+        if ( ! class_exists( 'Sektorel_Event_HTML_Review_Triage' ) ) {
+            return;
+        }
+
+        $triage = Sektorel_Event_HTML_Review_Triage::classify( absint( $candidate_id ) );
+        if ( ! is_array( $triage ) || empty( $triage['level'] ) ) {
+            return;
+        }
+
+        update_post_meta( $candidate_id, 'candidate_triage_level', sanitize_key( (string) $triage['level'] ) );
+        update_post_meta( $candidate_id, 'candidate_triage_score', absint( isset( $triage['score'] ) ? $triage['score'] : 0 ) );
+        update_post_meta( $candidate_id, 'candidate_triage_reasons', sanitize_text_field( implode( ', ', isset( $triage['reasons'] ) ? (array) $triage['reasons'] : array() ) ) );
+        update_post_meta( $candidate_id, 'candidate_triage_version', Sektorel_Event_HTML_Review_Triage::ENGINE_VERSION );
     }
 
     private static function candidate_page_url( $candidate_id ) {
