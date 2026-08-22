@@ -96,7 +96,7 @@ class Sektorel_Event_Source_Title_Repair_Stage {
                 $messages[] = 'Hata: ' . get_the_title( $candidate_id ) . ' — ' . $result->get_error_message();
             } elseif ( true === $result ) {
                 $updated++;
-                $messages[] = 'Başlık düzeltildi veya doğrulanmış duplicate arşivlendi: ' . get_the_title( $candidate_id );
+                $messages[] = 'Başlık veya kalite kimliği güncellendi: ' . get_the_title( $candidate_id );
             } else {
                 $skipped++;
             }
@@ -193,11 +193,18 @@ class Sektorel_Event_Source_Title_Repair_Stage {
             }
         }
 
-        $old_title = trim( (string) get_the_title( $candidate_id ) );
-        if ( '' === $old_title || self::normalize_title( $old_title ) === self::normalize_title( $title ) ) {
-            return false;
+        $old_title      = trim( (string) get_the_title( $candidate_id ) );
+        $same_identity  = '' !== $old_title && self::normalize_title( $old_title ) === self::normalize_title( $title );
+        $verified_title = 'verified_source_page_identity' === (string) get_post_meta( $candidate_id, 'candidate_title_source', true );
+
+        if ( $same_identity ) {
+            if ( ! $verified_title ) {
+                return false;
+            }
+            return self::refresh_verified_quality_if_stale( $candidate_id );
         }
-        if ( ! self::current_title_is_repairable( $host, $old_title ) ) {
+
+        if ( '' === $old_title || ! self::current_title_is_repairable( $host, $old_title ) ) {
             return false;
         }
 
@@ -240,24 +247,54 @@ class Sektorel_Event_Source_Title_Repair_Stage {
         update_post_meta( $candidate_id, 'candidate_title_source', 'verified_source_page_identity' );
         update_post_meta( $candidate_id, 'candidate_title_repaired_at', current_time( 'mysql' ) );
         delete_post_meta( $candidate_id, 'candidate_match_signature' );
-        self::refresh_html_triage( $candidate_id );
+        delete_post_meta( $candidate_id, 'candidate_verified_quality_signature' );
+        self::refresh_verified_quality_if_stale( $candidate_id );
         return true;
     }
 
-    private static function refresh_html_triage( $candidate_id ) {
-        if ( ! class_exists( 'Sektorel_Event_HTML_Review_Triage' ) ) {
-            return;
+    private static function refresh_verified_quality_if_stale( $candidate_id ) {
+        if ( ! class_exists( 'Sektorel_Event_Candidate_Confidence' ) || ! class_exists( 'Sektorel_Event_HTML_Review_Triage' ) ) {
+            return false;
+        }
+
+        $signature = sha1(
+            self::normalize_title( get_the_title( $candidate_id ) ) . '|' .
+            Sektorel_Event_Candidate_Confidence::ENGINE_VERSION . '|' .
+            Sektorel_Event_HTML_Review_Triage::ENGINE_VERSION
+        );
+        if ( $signature === (string) get_post_meta( $candidate_id, 'candidate_verified_quality_signature', true ) ) {
+            return false;
+        }
+
+        $scorer = Closure::bind(
+            static function ( $id ) {
+                Sektorel_Event_Candidate_Confidence::score_candidate( absint( $id ) );
+            },
+            null,
+            'Sektorel_Event_Candidate_Confidence'
+        );
+        if ( ! $scorer ) {
+            return false;
+        }
+
+        try {
+            $scorer( $candidate_id );
+        } catch ( Throwable $e ) {
+            return false;
         }
 
         $triage = Sektorel_Event_HTML_Review_Triage::classify( absint( $candidate_id ) );
         if ( ! is_array( $triage ) || empty( $triage['level'] ) ) {
-            return;
+            return false;
         }
 
         update_post_meta( $candidate_id, 'candidate_triage_level', sanitize_key( (string) $triage['level'] ) );
         update_post_meta( $candidate_id, 'candidate_triage_score', absint( isset( $triage['score'] ) ? $triage['score'] : 0 ) );
         update_post_meta( $candidate_id, 'candidate_triage_reasons', sanitize_text_field( implode( ', ', isset( $triage['reasons'] ) ? (array) $triage['reasons'] : array() ) ) );
         update_post_meta( $candidate_id, 'candidate_triage_version', Sektorel_Event_HTML_Review_Triage::ENGINE_VERSION );
+        update_post_meta( $candidate_id, 'candidate_verified_quality_signature', $signature );
+        update_post_meta( $candidate_id, 'candidate_verified_quality_refreshed_at', current_time( 'mysql' ) );
+        return true;
     }
 
     private static function candidate_page_url( $candidate_id ) {
