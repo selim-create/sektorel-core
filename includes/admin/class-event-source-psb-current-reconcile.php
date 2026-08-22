@@ -19,7 +19,8 @@ class Sektorel_Event_Source_PSB_Current_Reconcile {
     const VERIFY_URL = 'https://psbanatolia.com/en/about-fair-identity-1.html';
 
     public static function init() {
-        add_action( 'wp_ajax_sektorel_verified_source_repair_prepare', array( __CLASS__, 'reconcile_current_occurrence' ), 5 );
+        // Runtime orchestration is owned by Stage Registry. This class is
+        // invoked directly by the verified-source repair prepare callback.
     }
 
     public static function reconcile_current_occurrence() {
