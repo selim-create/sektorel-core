@@ -128,6 +128,21 @@ class Sektorel_Event_Source_Module {
             'prepare_payload'  => array( __CLASS__, 'trusted_discovery_payload' ),
         ) );
 
+        require_once __DIR__ . '/class-event-source-ito-fairs.php';
+        Sektorel_Event_Source_ITO_Fairs::init();
+        Sektorel_Event_Source_Stage_Registry::register( array(
+            'key'              => 'ito_fairs',
+            'order'            => 56,
+            'label'            => 'İTO Fuar Keşfi',
+            'description'      => 'İstanbul Ticaret Odası resmî Fuarlar yüzeyinde doğrulanan PSI ve JEC World 2027 occurrence kayıtlarını kaynağa özel deterministic adapter ile aday havuzunda günceller.',
+            'prepare_action'   => 'sektorel_ito_fairs_prepare',
+            'prepare_callback' => array( 'Sektorel_Event_Source_ITO_Fairs', 'ajax_prepare' ),
+            'batch_action'     => 'sektorel_ito_fairs_batch',
+            'batch_callback'   => array( 'Sektorel_Event_Source_ITO_Fairs', 'ajax_batch' ),
+            'nonce_action'     => Sektorel_Event_Source_ITO_Fairs::NONCE_ACTION,
+            'prepare_payload'  => array(),
+        ) );
+
         require_once __DIR__ . '/class-event-candidate-inbox.php';
         Sektorel_Event_Candidate_Inbox::init();
 
