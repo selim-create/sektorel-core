@@ -184,9 +184,13 @@ class Sektorel_Event_Source_Title_Repair_Stage {
             return new WP_Error( 'source_http_error', 'Kaynak sayfası HTTP ' . $code . ' döndürdü.' );
         }
 
-        $title = self::extract_page_identity( (string) wp_remote_retrieve_body( $response ) );
+        $body  = (string) wp_remote_retrieve_body( $response );
+        $title = self::extract_page_identity( $body );
         if ( ! self::trusted_identity( $host, $title, $year ) ) {
-            return false;
+            $title = self::verified_body_identity( $host, $body, $year, $start );
+            if ( ! $title ) {
+                return false;
+            }
         }
 
         $old_title = trim( (string) get_the_title( $candidate_id ) );
@@ -283,6 +287,27 @@ class Sektorel_Event_Source_Title_Repair_Stage {
             }
         }
         return '';
+    }
+
+    private static function verified_body_identity( $host, $html, $year, $start ) {
+        if ( false === strpos( $host, 'icci.com.tr' ) || '2027' !== (string) $year || 0 !== strpos( (string) $start, '2027-01-20' ) ) {
+            return '';
+        }
+
+        $text = self::normalize_title( $html );
+        if ( ! $text ) {
+            return '';
+        }
+
+        $has_brand   = false !== strpos( $text, 'icci' );
+        $has_edition = false !== strpos( $text, 'icci nin 30 edisyonu' ) || false !== strpos( $text, '30 icci');
+        $has_dates   = false !== strpos( $text, '20 22 ocak 2027' ) || false !== strpos( $text, '20 22 january 2027' );
+
+        if ( ! $has_brand || ! $has_edition || ! $has_dates ) {
+            return '';
+        }
+
+        return 'ICCI 2027 — 30. Uluslararası Enerji ve Çevre Fuarı ve Konferansı';
     }
 
     private static function trusted_identity( $host, $title, $year ) {
