@@ -26,7 +26,7 @@ class Sektorel_Event_Source_Title_Repair_Stage {
         $stage = array(
             'key'             => 'source_title_repair',
             'label'           => 'Kaynak Başlığını Doğrula',
-            'description'     => 'Doğrulanmış ICCI/IIFF HTML başlık hatalarını matcher öncesinde güvenli biçimde düzeltir.',
+            'description'     => 'Doğrulanmış ICCI/IIFF HTML başlık hatalarını matcher öncesinde güvenli biçimde düzeltir; aynı canonical candidate zaten varsa bozuk başlıklı kopyayı arşivler.',
             'prepare_action'  => 'sektorel_source_title_repair_prepare',
             'batch_action'    => 'sektorel_source_title_repair_batch',
             'nonce'           => wp_create_nonce( self::NONCE_ACTION ),
@@ -96,7 +96,7 @@ class Sektorel_Event_Source_Title_Repair_Stage {
                 $messages[] = 'Hata: ' . get_the_title( $candidate_id ) . ' — ' . $result->get_error_message();
             } elseif ( true === $result ) {
                 $updated++;
-                $messages[] = 'Başlık düzeltildi: ' . get_the_title( $candidate_id );
+                $messages[] = 'Başlık düzeltildi veya doğrulanmış duplicate arşivlendi: ' . get_the_title( $candidate_id );
             } else {
                 $skipped++;
             }
@@ -201,7 +201,7 @@ class Sektorel_Event_Source_Title_Repair_Stage {
         $fingerprint = sha1( $source_id . '|' . self::normalize_title( $title ) . '|' . $start );
         $collision   = get_posts( array(
             'post_type'      => 'event_candidate',
-            'post_status'    => 'any',
+            'post_status'    => array( 'publish', 'draft', 'pending', 'private' ),
             'posts_per_page' => 1,
             'fields'         => 'ids',
             'meta_key'       => 'candidate_fingerprint',
@@ -210,7 +210,20 @@ class Sektorel_Event_Source_Title_Repair_Stage {
             'no_found_rows'  => true,
         ) );
         if ( $collision ) {
-            return false;
+            $duplicate_of = absint( $collision[0] );
+            if ( ! $duplicate_of || $source_id !== absint( get_post_meta( $duplicate_of, 'source_id', true ) ) ) {
+                return false;
+            }
+
+            add_post_meta( $candidate_id, 'candidate_title_history', $old_title, false );
+            update_post_meta( $candidate_id, 'candidate_status', 'ignored' );
+            update_post_meta( $candidate_id, 'candidate_resolution', 'verified_source_title_duplicate' );
+            update_post_meta( $candidate_id, 'candidate_duplicate_of', $duplicate_of );
+            update_post_meta( $candidate_id, 'candidate_title_source', 'verified_source_page_identity' );
+            update_post_meta( $candidate_id, 'candidate_title_repaired_at', current_time( 'mysql' ) );
+            update_post_meta( $candidate_id, 'candidate_resolved_at', current_time( 'mysql' ) );
+            delete_post_meta( $candidate_id, 'candidate_match_signature' );
+            return true;
         }
 
         $updated = wp_update_post( array( 'ID' => $candidate_id, 'post_title' => $title ), true );
