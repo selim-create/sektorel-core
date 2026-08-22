@@ -54,7 +54,7 @@ class Sektorel_Event_Source_PSB_Current_Reconcile {
             if ( 0 !== strpos( $start, '2026-09-09' ) || 0 !== strpos( $end, '2026-09-12' ) ) {
                 continue;
             }
-            if ( absint( get_post_meta( $candidate_id, 'matched_event_id', true ) ) || absint( get_post_meta( $candidate_id, 'imported_event_id', true ) ) ) {
+            if ( absint( get_post_meta( $candidate_id, 'imported_event_id', true ) ) ) {
                 continue;
             }
 
