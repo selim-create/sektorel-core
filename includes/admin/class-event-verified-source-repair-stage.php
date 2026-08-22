@@ -36,6 +36,14 @@ class Sektorel_Event_Verified_Source_Repair_Stage {
 
     public static function ajax_prepare() {
         self::require_ajax();
+
+        // Stage Registry invokes prepare callbacks directly. Keep the PSB
+        // source-specific reconcile on this authoritative path rather than a
+        // parallel wp_ajax hook/bridge that background execution can bypass.
+        if ( class_exists( 'Sektorel_Event_Source_PSB_Current_Reconcile' ) ) {
+            Sektorel_Event_Source_PSB_Current_Reconcile::reconcile_current_occurrence();
+        }
+
         $ids   = self::eligible_candidate_ids();
         $token = strtolower( wp_generate_password( 24, false, false ) );
         set_transient( self::queue_key( get_current_user_id(), $token ), array_values( $ids ), self::QUEUE_TTL );
