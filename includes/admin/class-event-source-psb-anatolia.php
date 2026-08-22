@@ -4,6 +4,8 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
+require_once __DIR__ . '/class-event-source-psb-current-reconcile.php';
+
 /**
  * Source-specific transport fallback for PSB Anatolia source #340.
  *
@@ -24,6 +26,7 @@ class Sektorel_Event_Source_PSB_Anatolia {
 
     public static function init() {
         add_filter( 'pre_http_request', array( __CLASS__, 'proxy_official_request' ), 10, 3 );
+        Sektorel_Event_Source_PSB_Current_Reconcile::init();
     }
 
     public static function proxy_official_request( $preempt, $args, $url ) {
