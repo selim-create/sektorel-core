@@ -294,13 +294,13 @@ class Sektorel_Event_Source_Title_Repair_Stage {
             return '';
         }
 
-        $text = self::normalize_title( $html );
+        $text = self::normalize_signal_text( $html );
         if ( ! $text ) {
             return '';
         }
 
         $has_brand   = false !== strpos( $text, 'icci' );
-        $has_edition = false !== strpos( $text, 'icci nin 30 edisyonu' ) || false !== strpos( $text, '30 icci');
+        $has_edition = false !== strpos( $text, 'icci nin 30 edisyonu' ) || false !== strpos( $text, '30 icci' );
         $has_dates   = false !== strpos( $text, '20 22 ocak 2027' ) || false !== strpos( $text, '20 22 january 2027' );
 
         if ( ! $has_brand || ! $has_edition || ! $has_dates ) {
@@ -342,6 +342,12 @@ class Sektorel_Event_Source_Title_Repair_Stage {
 
     private static function normalize_title( $title ) {
         return strtolower( remove_accents( self::clean_text( $title ) ) );
+    }
+
+    private static function normalize_signal_text( $text ) {
+        $text = self::normalize_title( $text );
+        $text = preg_replace( '/[^a-z0-9]+/i', ' ', $text );
+        return trim( preg_replace( '/\s+/', ' ', $text ) );
     }
 
     private static function require_ajax() {
