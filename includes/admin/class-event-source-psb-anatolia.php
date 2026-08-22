@@ -7,10 +7,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Source-specific transport fallback for PSB Anatolia source #340.
  *
- * Production occasionally times out on the generic homepage during Stage 12.
- * During the HTML scan only, fetch the smaller official "Fuar Künyesi" page
- * instead. The existing conservative HTML parser, matcher, repair stage and
- * candidate lifecycle remain authoritative; no Event is created here.
+ * Production occasionally times out on the generic homepage. During both the
+ * source verification batch and the generic HTML scan, fetch the smaller
+ * official "Fuar Künyesi" page instead. The existing checker, conservative
+ * HTML parser, matcher, repair stage and candidate lifecycle remain
+ * authoritative; no Event is created here.
  */
 class Sektorel_Event_Source_PSB_Anatolia {
 
@@ -22,16 +23,20 @@ class Sektorel_Event_Source_PSB_Anatolia {
     private static $proxying = false;
 
     public static function init() {
-        add_filter( 'pre_http_request', array( __CLASS__, 'proxy_html_scan_request' ), 10, 3 );
+        add_filter( 'pre_http_request', array( __CLASS__, 'proxy_official_request' ), 10, 3 );
     }
 
-    public static function proxy_html_scan_request( $preempt, $args, $url ) {
+    public static function proxy_official_request( $preempt, $args, $url ) {
         if ( self::$proxying || ! wp_doing_ajax() ) {
             return $preempt;
         }
 
         $action = isset( $_REQUEST['action'] ) ? sanitize_key( wp_unslash( $_REQUEST['action'] ) ) : '';
-        if ( 'sektorel_html_event_scan_batch' !== $action ) {
+        $allowed_actions = array(
+            'sektorel_event_source_check_batch',
+            'sektorel_html_event_scan_batch',
+        );
+        if ( ! in_array( $action, $allowed_actions, true ) ) {
             return $preempt;
         }
 
