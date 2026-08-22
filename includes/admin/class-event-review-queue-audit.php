@@ -102,7 +102,7 @@ class Sektorel_Event_Review_Queue_Audit {
         $nonce  = wp_create_nonce( self::NONCE_ACTION );
         echo '<div id="ssc-review-audit-card" class="card ssc-review-audit" style="max-width:1000px;padding:20px;margin-top:18px;">';
         echo '<h2 style="margin-top:0;">İnceleme Kuyruğu Dağılımı</h2>';
-        echo '<p class="description ssc-review-audit-description">İnceleme kuyruğundaki <strong class="ssc-review-audit-total">' . esc_html( number_format_i18n( $report['total'] ) ) . '</strong> kayıt mevcut durumlarına göre sınıflandırıldı. Bu rapor hiçbir candidate veya Event durumunu değiştirmez. Her grubun altında inceleme için gerekli candidate, kaynak, tarih ve bağlantı bilgileri gösterilir.</p>';
+        echo '<p class="description ssc-review-audit-description">İnceleme kuyruğundaki <strong class="ssc-review-audit-total">' . esc_html( number_format_i18n( $report['total'] ) ) . '</strong> kayıt mevcut durumlarına göre sınıflandırıldı. Bu rapor hiçbir candidate veya Event durumunu değiştirmez. Her grubun altında inceleme için gerekli candidate, kaynak, tarih, kalite ve güvenli taslak engel bilgileri gösterilir.</p>';
         echo '<div class="ssc-review-audit-rows" style="margin-top:14px;">' . self::bucket_rows_html( $report['buckets'] ) . '</div>';
         echo '</div>';
         ?>
@@ -141,27 +141,72 @@ class Sektorel_Event_Review_Queue_Audit {
     }
 
     private static function candidate_item( $candidate_id, $status, $parser, $reason, $role, $event_id ) {
-        $source_id  = absint( get_post_meta( $candidate_id, 'source_id', true ) );
-        $start_date = trim( (string) get_post_meta( $candidate_id, 'start_date', true ) );
-        $end_date   = trim( (string) get_post_meta( $candidate_id, 'end_date', true ) );
-        $source_url = esc_url_raw( (string) get_post_meta( $candidate_id, 'source_url', true ) );
-        $event_url  = esc_url_raw( (string) get_post_meta( $candidate_id, 'event_url', true ) );
+        $source_id         = absint( get_post_meta( $candidate_id, 'source_id', true ) );
+        $start_date        = trim( (string) get_post_meta( $candidate_id, 'start_date', true ) );
+        $end_date          = trim( (string) get_post_meta( $candidate_id, 'end_date', true ) );
+        $source_url        = esc_url_raw( (string) get_post_meta( $candidate_id, 'source_url', true ) );
+        $event_url         = esc_url_raw( (string) get_post_meta( $candidate_id, 'event_url', true ) );
+        $triage            = sanitize_key( (string) get_post_meta( $candidate_id, 'candidate_triage_level', true ) );
+        $triage_score      = absint( get_post_meta( $candidate_id, 'candidate_triage_score', true ) );
+        $confidence_score  = absint( get_post_meta( $candidate_id, 'candidate_confidence_score', true ) );
+        $confidence_level  = sanitize_key( (string) get_post_meta( $candidate_id, 'candidate_confidence_level', true ) );
+        $imported_event_id = absint( get_post_meta( $candidate_id, 'imported_event_id', true ) );
+        $safe_draft        = self::safe_discovery_diagnostic( $candidate_id );
 
         return array(
-            'id'            => absint( $candidate_id ),
-            'title'         => get_the_title( $candidate_id ),
-            'status'        => $status ?: 'unset',
-            'parser'        => $parser ?: 'unset',
-            'reason'        => $reason ?: 'unset',
-            'role'          => $role ?: 'discovery',
-            'event_id'      => absint( $event_id ),
-            'source_id'     => $source_id,
-            'source_title'  => $source_id ? get_the_title( $source_id ) : '',
-            'start_date'    => $start_date,
-            'end_date'      => $end_date,
-            'source_url'    => $source_url,
-            'event_url'     => $event_url,
+            'id'                 => absint( $candidate_id ),
+            'title'              => get_the_title( $candidate_id ),
+            'status'             => $status ?: 'unset',
+            'parser'             => $parser ?: 'unset',
+            'reason'             => $reason ?: 'unset',
+            'role'               => $role ?: 'discovery',
+            'event_id'           => absint( $event_id ),
+            'imported_event_id'  => $imported_event_id,
+            'source_id'          => $source_id,
+            'source_title'       => $source_id ? get_the_title( $source_id ) : '',
+            'start_date'         => $start_date,
+            'end_date'           => $end_date,
+            'source_url'         => $source_url,
+            'event_url'          => $event_url,
+            'triage'             => $triage ?: 'unset',
+            'triage_score'       => $triage_score,
+            'confidence_score'   => $confidence_score,
+            'confidence_level'   => $confidence_level ?: 'unset',
+            'safe_draft_code'    => $safe_draft['code'],
+            'safe_draft_message' => $safe_draft['message'],
         );
+    }
+
+    private static function safe_discovery_diagnostic( $candidate_id ) {
+        if ( ! class_exists( 'Sektorel_Event_Safe_Discovery_Draft_Stage' ) ) {
+            return array( 'code' => 'unavailable', 'message' => 'Güvenli discovery stage kullanılamıyor.' );
+        }
+
+        $gateway = Closure::bind(
+            static function ( $id ) {
+                return Sektorel_Event_Safe_Discovery_Draft_Stage::eligibility( absint( $id ) );
+            },
+            null,
+            'Sektorel_Event_Safe_Discovery_Draft_Stage'
+        );
+        if ( ! $gateway ) {
+            return array( 'code' => 'unavailable', 'message' => 'Eligibility tanısı oluşturulamadı.' );
+        }
+
+        try {
+            $result = $gateway( $candidate_id );
+        } catch ( Throwable $e ) {
+            return array( 'code' => 'diagnostic_error', 'message' => $e->getMessage() );
+        }
+
+        if ( is_wp_error( $result ) ) {
+            return array(
+                'code'    => sanitize_key( $result->get_error_code() ),
+                'message' => sanitize_text_field( $result->get_error_message() ),
+            );
+        }
+
+        return array( 'code' => 'eligible', 'message' => 'Güvenli Discovery Draft için uygun.' );
     }
 
     private static function bucket_rows_html( $buckets ) {
@@ -207,15 +252,31 @@ class Sektorel_Event_Review_Queue_Audit {
             $meta[] = 'Tarih: ' . $date;
         }
 
+        $quality = array(
+            'Triage: ' . $item['triage'] . ( $item['triage_score'] ? ' ' . absint( $item['triage_score'] ) . '/100' : '' ),
+            'Confidence: ' . $item['confidence_level'] . ' ' . absint( $item['confidence_score'] ) . '/100',
+            'Safe Draft: ' . $item['safe_draft_code'],
+        );
+        if ( ! empty( $item['imported_event_id'] ) ) {
+            $quality[] = 'Imported Event #' . absint( $item['imported_event_id'] );
+        }
+
         $html  = '<article style="border:1px solid #dcdcde;border-radius:5px;padding:10px 12px;background:#fff;">';
         $html .= '<div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start;">';
         $html .= '<div><a href="' . esc_url( $candidate_edit ) . '"><strong>' . esc_html( $title ) . '</strong></a>';
         $html .= '<div class="description" style="margin-top:3px;">Candidate #' . esc_html( $candidate_id ) . ' · ' . esc_html( implode( ' · ', $meta ) ) . '</div>';
+        $html .= '<div class="description" style="margin-top:3px;">' . esc_html( implode( ' · ', $quality ) ) . '</div>';
+        if ( 'eligible' !== $item['safe_draft_code'] && ! empty( $item['safe_draft_message'] ) ) {
+            $html .= '<div class="description" style="margin-top:3px;"><strong>Stage 15 engeli:</strong> ' . esc_html( $item['safe_draft_message'] ) . '</div>';
+        }
         $html .= '</div>';
 
         if ( ! empty( $item['event_id'] ) ) {
             $event_edit = admin_url( 'post.php?post=' . absint( $item['event_id'] ) . '&action=edit' );
             $html .= '<a class="button button-small" href="' . esc_url( $event_edit ) . '">Event #' . esc_html( absint( $item['event_id'] ) ) . '</a>';
+        } elseif ( ! empty( $item['imported_event_id'] ) && 'event' === get_post_type( absint( $item['imported_event_id'] ) ) ) {
+            $event_edit = admin_url( 'post.php?post=' . absint( $item['imported_event_id'] ) . '&action=edit' );
+            $html .= '<a class="button button-small" href="' . esc_url( $event_edit ) . '">Imported Event #' . esc_html( absint( $item['imported_event_id'] ) ) . '</a>';
         }
         $html .= '</div>';
 
