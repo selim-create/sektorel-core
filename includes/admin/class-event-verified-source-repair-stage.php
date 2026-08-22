@@ -334,9 +334,9 @@ class Sektorel_Event_Verified_Source_Repair_Stage {
                 ),
             ),
             340 => array(
-                'verify_url'   => 'https://psbanatolia.com/hakkimizda-fuar-kunyesi-1.html',
+                'verify_url'   => 'https://psbanatolia.com/en/about-fair-identity-1.html',
                 'start_prefix' => '2026-09-12',
-                'signals'      => array( array( 'psb anatolia 2026' ), array( 'uluslararasi peyzaj sus bitkileri bahce sanatlari ve ekipmanlari fuari' ), array( '09 12 eylul 2026' ) ),
+                'signals'      => array( array( 'psb anatolia 2026' ), array( 'international landscaping ornamental plants garden arts and equipments fair' ), array( '09 12 september 2026' ) ),
                 'target'       => array(
                     'title'      => 'PSB Anatolia 2026 — Uluslararası Peyzaj, Süs Bitkileri, Bahçe Sanatları ve Ekipmanları Fuarı',
                     'start_date' => '2026-09-09T00:00',
