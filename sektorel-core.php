@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Sektorel Core
  * Description: Sektörel Ajanda projesi için CPT, Taxonomy ve API tanımlarını içeren çekirdek eklenti.
- * Version: 1.58.5
+ * Version: 1.58.6
  * Author: Sektörel Ajanda Dev Team
  * Text Domain: sektorel-core
  */
@@ -215,7 +215,6 @@ class Sektorel_Core {
 
     public function init_fields() {
         Sektorel_Company_Fields::init();
-        Sektorel_Lead_Fields::init();
         Sektorel_Event_Fields::init();
         Sektorel_Sector_Fields::init();
         Sektorel_Location_Fields::init();
