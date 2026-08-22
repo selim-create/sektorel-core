@@ -143,6 +143,9 @@ class Sektorel_Event_Source_Module {
         require_once __DIR__ . '/class-event-source-title-repair-stage.php';
         Sektorel_Event_Source_Title_Repair_Stage::init();
 
+        require_once __DIR__ . '/class-event-verified-source-repair-stage.php';
+        Sektorel_Event_Verified_Source_Repair_Stage::init();
+
         require_once __DIR__ . '/class-event-candidate-background-matcher.php';
         Sektorel_Event_Candidate_Background_Matcher::init();
 
