@@ -215,6 +215,7 @@ class Sektorel_Core {
 
     public function init_fields() {
         Sektorel_Company_Fields::init();
+        Sektorel_Lead_Fields::init();
         Sektorel_Event_Fields::init();
         Sektorel_Sector_Fields::init();
         Sektorel_Location_Fields::init();
