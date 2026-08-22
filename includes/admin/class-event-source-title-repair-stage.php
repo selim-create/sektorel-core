@@ -266,8 +266,22 @@ class Sektorel_Event_Source_Title_Repair_Stage {
             return false;
         }
 
-        delete_post_meta( $candidate_id, 'candidate_confidence_version' );
-        Sektorel_Event_Candidate_Confidence::classify_existing_batch();
+        $scorer = Closure::bind(
+            static function ( $id ) {
+                Sektorel_Event_Candidate_Confidence::score_candidate( absint( $id ) );
+            },
+            null,
+            'Sektorel_Event_Candidate_Confidence'
+        );
+        if ( ! $scorer ) {
+            return false;
+        }
+
+        try {
+            $scorer( $candidate_id );
+        } catch ( Throwable $e ) {
+            return false;
+        }
 
         $triage = Sektorel_Event_HTML_Review_Triage::classify( absint( $candidate_id ) );
         if ( ! is_array( $triage ) || empty( $triage['level'] ) ) {
