@@ -13,8 +13,8 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Sektorel_Event_HTML_Review_Triage {
 
-    const ENGINE_VERSION = '1351';
-    const OPTION_KEY     = 'sektorel_html_review_triage_1351';
+    const ENGINE_VERSION = '1352';
+    const OPTION_KEY     = 'sektorel_html_review_triage_1352';
 
     public static function init() {
         add_action( 'load-edit.php', array( __CLASS__, 'refresh_unresolved' ), 39 );
@@ -177,7 +177,7 @@ class Sektorel_Event_HTML_Review_Triage {
 
     private static function strong_event_identity( $title ) {
         return (bool) preg_match(
-            '/\b(fuar|fair|expo|exhibition|summit|ticaret heyeti|trade mission|kongre|congress|conference|konferans|festival|teknofest|fashion connection|brand week|webrazzi|fintech|marmomac|middle east energy)\b/i',
+            '/\b(fuar(?:i)?|fair|expo|exhibition|summit|ticaret heyeti|trade mission|kongre(?:si)?|congress|conference|konferans(?:i)?|festival|teknofest|fashion connection|brand week|webrazzi|fintech|marmomac|middle east energy)\b/i',
             $title
         );
     }
@@ -269,7 +269,7 @@ class Sektorel_Event_HTML_Review_Triage {
         }
 
         delete_transient( self::notice_key() );
-        echo '<div class="notice notice-info is-dismissible"><p><strong>HTML Review Triage 1.35.1:</strong> ' . esc_html( sprintf(
+        echo '<div class="notice notice-info is-dismissible"><p><strong>HTML Review Triage 1.35.2:</strong> ' . esc_html( sprintf(
             'Kontrol edilen: %1$d; Güvenli Aday: %2$d; Manuel İnceleme: %3$d; Muhtemel Gürültü: %4$d. Bu öneriler advisory amaçlıdır; hiçbir adayın durumu değiştirilmedi.',
             absint( $report['checked'] ),
             absint( $report['safe'] ),
