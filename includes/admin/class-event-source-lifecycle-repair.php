@@ -37,7 +37,6 @@ class Sektorel_Event_Source_Lifecycle_Repair {
             'no_found_rows'  => true,
         ) );
 
-        $handled = false;
         foreach ( $ids as $source_id ) {
             $source_id = absint( $source_id );
             if ( self::IWES_TITLE !== trim( (string) get_the_title( $source_id ) ) ) {
@@ -52,13 +51,13 @@ class Sektorel_Event_Source_Lifecycle_Repair {
             }
 
             self::retire_iwes_source( $source_id );
-            $handled = true;
             break;
         }
 
-        if ( $handled ) {
-            update_option( self::OPTION_KEY, self::VERSION, false );
-        }
+        // The event_source post type is registered before this priority-30 init
+        // callback. Mark this migration complete even if no exact IWES record
+        // exists, so every request does not rescan the source catalogue.
+        update_option( self::OPTION_KEY, self::VERSION, false );
     }
 
     private static function retire_iwes_source( $source_id ) {
