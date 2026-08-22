@@ -17,49 +17,21 @@ class Sektorel_Event_Verified_Source_Repair_Stage {
     public static function init() {
         add_action( 'wp_ajax_sektorel_verified_source_repair_prepare', array( __CLASS__, 'ajax_prepare' ) );
         add_action( 'wp_ajax_sektorel_verified_source_repair_batch', array( __CLASS__, 'ajax_batch' ) );
-        add_filter( 'sektorel_source_center_stages', array( __CLASS__, 'inject_stage' ), 10001 );
-        add_filter( 'sektorel_source_background_action_map', array( __CLASS__, 'filter_action_map' ), 10001 );
-        add_filter( 'sektorel_source_background_nonce_actions', array( __CLASS__, 'filter_nonce_action_map' ), 10001 );
-    }
 
-    public static function inject_stage( $stages ) {
-        $stage = array(
-            'key'             => 'verified_source_repair',
-            'label'           => 'Doğrulanmış Kaynak Alanlarını Düzelt',
-            'description'     => 'ZUCHEX, Avrasya Ambalaj, IIFF, IBIA, IFAT Eurasia, PSB Anatolia ve ALUEXPO adaylarında resmî sayfayla doğrulanan başlık, tarih ve canonical URL alanlarını matcher öncesinde idempotent olarak düzeltir.',
-            'prepare_action'  => 'sektorel_verified_source_repair_prepare',
-            'batch_action'    => 'sektorel_verified_source_repair_batch',
-            'nonce'           => wp_create_nonce( self::NONCE_ACTION ),
-            'prepare_payload' => array(),
-        );
-
-        $result   = array();
-        $inserted = false;
-        foreach ( (array) $stages as $item ) {
-            if ( ! $inserted && isset( $item['key'] ) && 'candidate_matcher' === $item['key'] ) {
-                $result[] = $stage;
-                $inserted = true;
-            }
-            $result[] = $item;
+        if ( class_exists( 'Sektorel_Event_Source_Stage_Registry' ) ) {
+            Sektorel_Event_Source_Stage_Registry::register( array(
+                'key'              => 'verified_source_repair',
+                'order'            => 79,
+                'label'            => 'Doğrulanmış Kaynak Alanlarını Düzelt',
+                'description'      => 'ZUCHEX, Avrasya Ambalaj, IIFF, IBIA, IFAT Eurasia, PSB Anatolia ve ALUEXPO adaylarında resmî sayfayla doğrulanan başlık, tarih ve canonical URL alanlarını matcher öncesinde idempotent olarak düzeltir.',
+                'prepare_action'   => 'sektorel_verified_source_repair_prepare',
+                'prepare_callback' => array( __CLASS__, 'ajax_prepare' ),
+                'batch_action'     => 'sektorel_verified_source_repair_batch',
+                'batch_callback'   => array( __CLASS__, 'ajax_batch' ),
+                'nonce_action'     => self::NONCE_ACTION,
+                'prepare_payload'  => array(),
+            ) );
         }
-        if ( ! $inserted ) {
-            $result[] = $stage;
-        }
-        return $result;
-    }
-
-    public static function filter_action_map( $map ) {
-        $map = (array) $map;
-        $map['sektorel_verified_source_repair_prepare'] = array( __CLASS__, 'ajax_prepare' );
-        $map['sektorel_verified_source_repair_batch']   = array( __CLASS__, 'ajax_batch' );
-        return $map;
-    }
-
-    public static function filter_nonce_action_map( $map ) {
-        $map = (array) $map;
-        $map['sektorel_verified_source_repair_prepare'] = self::NONCE_ACTION;
-        $map['sektorel_verified_source_repair_batch']   = self::NONCE_ACTION;
-        return $map;
     }
 
     public static function ajax_prepare() {
@@ -192,7 +164,7 @@ class Sektorel_Event_Verified_Source_Repair_Stage {
             return false;
         }
 
-        $target = $rule['target'];
+        $target    = $rule['target'];
         $signature = sha1( $source_id . '|' . wp_json_encode( $target ) );
         if ( $signature === (string) get_post_meta( $candidate_id, 'candidate_verified_source_repair_signature', true ) ) {
             return false;
@@ -205,7 +177,7 @@ class Sektorel_Event_Verified_Source_Repair_Stage {
         $new_url   = isset( $target['event_url'] ) ? esc_url_raw( (string) $target['event_url'], array( 'http', 'https' ) ) : esc_url_raw( (string) get_post_meta( $candidate_id, 'event_url', true ), array( 'http', 'https' ) );
 
         $fingerprint = sha1( $source_id . '|' . self::normalize_title( $new_title ) . '|' . $new_start );
-        $collision = get_posts( array(
+        $collision   = get_posts( array(
             'post_type'      => 'event_candidate',
             'post_status'    => array( 'publish', 'draft', 'pending', 'private' ),
             'posts_per_page' => 1,
