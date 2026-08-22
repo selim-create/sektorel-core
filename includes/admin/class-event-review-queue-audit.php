@@ -19,14 +19,14 @@ class Sektorel_Event_Review_Queue_Audit {
     public static function report() {
         $ids = self::reviewable_candidate_ids();
         $buckets = array(
-            'html_noise'           => array( 'label' => 'HTML · Muhtemel Gürültü', 'count' => 0 ),
-            'html_safe_new'        => array( 'label' => 'HTML · Güvenli Yeni Aday', 'count' => 0 ),
-            'changed_matched'      => array( 'label' => 'Eşleşmiş · Değişiklik Var', 'count' => 0 ),
-            'manual_match'         => array( 'label' => 'Belirsiz Eşleşme · Manuel İnceleme', 'count' => 0 ),
-            'enrichment_unmatched' => array( 'label' => 'Zenginleştirme · Eşleşme Gerekli', 'count' => 0 ),
-            'enrichment_matched'   => array( 'label' => 'Zenginleştirme · Eşleşmiş Ama Açık', 'count' => 0 ),
-            'discovery_new'        => array( 'label' => 'Discovery/Canonical · Yeni', 'count' => 0 ),
-            'other'                => array( 'label' => 'Diğer', 'count' => 0 ),
+            'html_noise'           => array( 'label' => 'HTML · Muhtemel Gürültü', 'count' => 0, 'items' => array() ),
+            'html_safe_new'        => array( 'label' => 'HTML · Güvenli Yeni Aday', 'count' => 0, 'items' => array() ),
+            'changed_matched'      => array( 'label' => 'Eşleşmiş · Değişiklik Var', 'count' => 0, 'items' => array() ),
+            'manual_match'         => array( 'label' => 'Belirsiz Eşleşme · Manuel İnceleme', 'count' => 0, 'items' => array() ),
+            'enrichment_unmatched' => array( 'label' => 'Zenginleştirme · Eşleşme Gerekli', 'count' => 0, 'items' => array() ),
+            'enrichment_matched'   => array( 'label' => 'Zenginleştirme · Eşleşmiş Ama Açık', 'count' => 0, 'items' => array() ),
+            'discovery_new'        => array( 'label' => 'Discovery/Canonical · Yeni', 'count' => 0, 'items' => array() ),
+            'other'                => array( 'label' => 'Diğer', 'count' => 0, 'items' => array() ),
         );
 
         $status_counts = $parser_counts = $role_counts = $reason_counts = array();
@@ -65,7 +65,9 @@ class Sektorel_Event_Review_Queue_Audit {
             } else {
                 $bucket = 'other';
             }
+
             $buckets[ $bucket ]['count']++;
+            $buckets[ $bucket ]['items'][] = self::candidate_item( $candidate_id, $status, $parser, $reason, $role, $event_id );
         }
 
         return array(
@@ -100,7 +102,7 @@ class Sektorel_Event_Review_Queue_Audit {
         $nonce  = wp_create_nonce( self::NONCE_ACTION );
         echo '<div id="ssc-review-audit-card" class="card ssc-review-audit" style="max-width:1000px;padding:20px;margin-top:18px;">';
         echo '<h2 style="margin-top:0;">İnceleme Kuyruğu Dağılımı</h2>';
-        echo '<p class="description ssc-review-audit-description">İnceleme kuyruğundaki <strong class="ssc-review-audit-total">' . esc_html( number_format_i18n( $report['total'] ) ) . '</strong> kayıt mevcut durumlarına göre sınıflandırıldı. Bu rapor hiçbir candidate veya Event durumunu değiştirmez.</p>';
+        echo '<p class="description ssc-review-audit-description">İnceleme kuyruğundaki <strong class="ssc-review-audit-total">' . esc_html( number_format_i18n( $report['total'] ) ) . '</strong> kayıt mevcut durumlarına göre sınıflandırıldı. Bu rapor hiçbir candidate veya Event durumunu değiştirmez. Her grubun altında inceleme için gerekli candidate, kaynak, tarih ve bağlantı bilgileri gösterilir.</p>';
         echo '<div class="ssc-review-audit-rows" style="margin-top:14px;">' . self::bucket_rows_html( $report['buckets'] ) . '</div>';
         echo '</div>';
         ?>
@@ -138,17 +140,122 @@ class Sektorel_Event_Review_Queue_Audit {
         <?php
     }
 
+    private static function candidate_item( $candidate_id, $status, $parser, $reason, $role, $event_id ) {
+        $source_id  = absint( get_post_meta( $candidate_id, 'source_id', true ) );
+        $start_date = trim( (string) get_post_meta( $candidate_id, 'start_date', true ) );
+        $end_date   = trim( (string) get_post_meta( $candidate_id, 'end_date', true ) );
+        $source_url = esc_url_raw( (string) get_post_meta( $candidate_id, 'source_url', true ) );
+        $event_url  = esc_url_raw( (string) get_post_meta( $candidate_id, 'event_url', true ) );
+
+        return array(
+            'id'            => absint( $candidate_id ),
+            'title'         => get_the_title( $candidate_id ),
+            'status'        => $status ?: 'unset',
+            'parser'        => $parser ?: 'unset',
+            'reason'        => $reason ?: 'unset',
+            'role'          => $role ?: 'discovery',
+            'event_id'      => absint( $event_id ),
+            'source_id'     => $source_id,
+            'source_title'  => $source_id ? get_the_title( $source_id ) : '',
+            'start_date'    => $start_date,
+            'end_date'      => $end_date,
+            'source_url'    => $source_url,
+            'event_url'     => $event_url,
+        );
+    }
+
     private static function bucket_rows_html( $buckets ) {
         $html = '';
         foreach ( (array) $buckets as $bucket ) {
             if ( empty( $bucket['count'] ) ) {
                 continue;
             }
-            $html .= '<div style="display:flex;justify-content:space-between;gap:20px;padding:7px 0;border-top:1px solid #e2e4e7;">';
-            $html .= '<span>' . esc_html( $bucket['label'] ) . '</span><strong>' . esc_html( number_format_i18n( $bucket['count'] ) ) . '</strong>';
+
+            $html .= '<section style="margin-top:14px;border-top:1px solid #dcdcde;padding-top:10px;">';
+            $html .= '<div style="display:flex;justify-content:space-between;gap:20px;align-items:center;">';
+            $html .= '<strong>' . esc_html( $bucket['label'] ) . '</strong><strong>' . esc_html( number_format_i18n( $bucket['count'] ) ) . '</strong>';
             $html .= '</div>';
+
+            if ( ! empty( $bucket['items'] ) ) {
+                $html .= '<div style="margin-top:8px;display:grid;gap:8px;">';
+                foreach ( $bucket['items'] as $item ) {
+                    $html .= self::candidate_item_html( $item );
+                }
+                $html .= '</div>';
+            }
+
+            $html .= '</section>';
         }
         return $html;
+    }
+
+    private static function candidate_item_html( $item ) {
+        $candidate_id = absint( $item['id'] );
+        $title = $item['title'] ? $item['title'] : '(Başlıksız candidate)';
+        $candidate_edit = admin_url( 'post.php?post=' . $candidate_id . '&action=edit' );
+        $date = self::date_label( $item['start_date'], $item['end_date'] );
+
+        $meta = array(
+            'Rol: ' . $item['role'],
+            'Parser: ' . $item['parser'],
+            'Durum: ' . $item['status'],
+        );
+        if ( 'unset' !== $item['reason'] ) {
+            $meta[] = 'Eşleşme: ' . $item['reason'];
+        }
+        if ( $date ) {
+            $meta[] = 'Tarih: ' . $date;
+        }
+
+        $html  = '<article style="border:1px solid #dcdcde;border-radius:5px;padding:10px 12px;background:#fff;">';
+        $html .= '<div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start;">';
+        $html .= '<div><a href="' . esc_url( $candidate_edit ) . '"><strong>' . esc_html( $title ) . '</strong></a>';
+        $html .= '<div class="description" style="margin-top:3px;">Candidate #' . esc_html( $candidate_id ) . ' · ' . esc_html( implode( ' · ', $meta ) ) . '</div>';
+        $html .= '</div>';
+
+        if ( ! empty( $item['event_id'] ) ) {
+            $event_edit = admin_url( 'post.php?post=' . absint( $item['event_id'] ) . '&action=edit' );
+            $html .= '<a class="button button-small" href="' . esc_url( $event_edit ) . '">Event #' . esc_html( absint( $item['event_id'] ) ) . '</a>';
+        }
+        $html .= '</div>';
+
+        if ( ! empty( $item['source_id'] ) || ! empty( $item['source_title'] ) ) {
+            $html .= '<div style="margin-top:6px;font-size:12px;">Kaynak: ';
+            if ( ! empty( $item['source_id'] ) ) {
+                $source_edit = admin_url( 'post.php?post=' . absint( $item['source_id'] ) . '&action=edit' );
+                $source_label = $item['source_title'] ? $item['source_title'] : 'Kaynak #' . absint( $item['source_id'] );
+                $html .= '<a href="' . esc_url( $source_edit ) . '">' . esc_html( $source_label ) . '</a>';
+            } else {
+                $html .= esc_html( $item['source_title'] );
+            }
+            $html .= '</div>';
+        }
+
+        $links = array();
+        if ( ! empty( $item['event_url'] ) ) {
+            $links[] = '<a href="' . esc_url( $item['event_url'] ) . '" target="_blank" rel="noopener noreferrer">Etkinlik URL</a>';
+        }
+        if ( ! empty( $item['source_url'] ) && $item['source_url'] !== $item['event_url'] ) {
+            $links[] = '<a href="' . esc_url( $item['source_url'] ) . '" target="_blank" rel="noopener noreferrer">Kaynak URL</a>';
+        }
+        if ( $links ) {
+            $html .= '<div style="margin-top:6px;font-size:12px;">' . implode( ' · ', $links ) . '</div>';
+        }
+
+        $html .= '</article>';
+        return $html;
+    }
+
+    private static function date_label( $start_date, $end_date ) {
+        $start = trim( (string) $start_date );
+        $end   = trim( (string) $end_date );
+        if ( ! $start && ! $end ) {
+            return '';
+        }
+        if ( $start && $end && $start !== $end ) {
+            return $start . ' → ' . $end;
+        }
+        return $start ?: $end;
     }
 
     private static function reviewable_candidate_ids() {
