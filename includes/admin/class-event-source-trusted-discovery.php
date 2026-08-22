@@ -121,30 +121,44 @@ class Sektorel_Event_Source_Trusted_Discovery {
             return $response;
         }
 
-        $detail_urls = self::webrazzi_detail_urls( $response['body'], $year );
-        if ( ! $detail_urls ) {
-            self::record_source_error( $source_id, 'Webrazzi etkinlik detay URL bulunamadı.' );
-            return new WP_Error( 'webrazzi_details_missing', 'Webrazzi etkinlik detay URL bulunamadı.' );
+        $entries = self::webrazzi_calendar_entries( $response['body'], $year );
+        if ( ! $entries ) {
+            self::record_source_error( $source_id, 'Webrazzi yaklaşan etkinlik kartları doğrulanamadı.' );
+            return new WP_Error( 'webrazzi_calendar_entries_missing', 'Webrazzi yaklaşan etkinlik kartları doğrulanamadı.' );
         }
 
         $stats = self::empty_stats();
-        foreach ( $detail_urls as $detail_url ) {
-            $detail = self::safe_get( $detail_url );
-            if ( is_wp_error( $detail ) ) {
-                $stats['error']++;
-                $stats['messages'][] = 'Webrazzi detay alınamadı: ' . $detail_url;
+        foreach ( $entries as $entry ) {
+            $existing_id = self::webrazzi_existing_candidate( $source_id, $entry );
+            if ( $existing_id ) {
+                update_post_meta( $existing_id, 'source_last_seen_at', current_time( 'mysql' ) );
+                $stats['unchanged']++;
                 continue;
             }
 
-            $record = self::parse_webrazzi_detail( $detail['body'], $detail_url, $year );
-            if ( is_wp_error( $record ) ) {
-                $stats['skipped']++;
-                continue;
+            $record = null;
+            $detail = self::safe_get( $entry['url'] );
+            if ( ! is_wp_error( $detail ) ) {
+                $parsed = self::parse_webrazzi_detail( $detail['body'], $entry['url'], $year );
+                if ( ! is_wp_error( $parsed ) && $entry['date'] === substr( (string) $parsed['start_date'], 0, 10 ) ) {
+                    $record = $parsed;
+                }
             }
+
+            if ( ! $record ) {
+                $record = self::webrazzi_calendar_record( $entry, $calendar_url, $year );
+                if ( is_wp_error( $record ) ) {
+                    $stats['error']++;
+                    $stats['messages'][] = $record->get_error_message();
+                    continue;
+                }
+                $stats['messages'][] = 'Webrazzi detail yerine resmî takvim kanıtı kullanıldı: ' . $entry['title'];
+            }
+
             self::apply_upsert_result( $stats, self::upsert_candidate( $source_id, 'webrazzi_events', $record ) );
         }
 
-        self::record_source_success( $source_id, count( $detail_urls ) . ' Webrazzi etkinlik detayı işlendi.' );
+        self::record_source_success( $source_id, count( $entries ) . ' yaklaşan Webrazzi occurrence işlendi.' );
         return $stats;
     }
 
@@ -176,25 +190,109 @@ class Sektorel_Event_Source_Trusted_Discovery {
         return $stats;
     }
 
-    private static function webrazzi_detail_urls( $html, $year ) {
+    private static function webrazzi_calendar_entries( $html, $year ) {
         $dom = self::dom( $html );
         if ( ! $dom ) {
             return array();
         }
 
-        $xpath = new DOMXPath( $dom );
-        $urls  = array();
+        $xpath   = new DOMXPath( $dom );
+        $entries = array();
+        $today   = current_time( 'Y-m-d' );
+
         foreach ( $xpath->query( '//a[@href]' ) as $node ) {
-            $href = trim( (string) $node->getAttribute( 'href' ) );
-            if ( ! $href || false === strpos( $href, '/etkinlik/' . $year . '/' ) ) {
+            $title = self::clean_text( $node->textContent );
+            if ( ! $title || false === stripos( $title, (string) $year ) ) {
                 continue;
             }
-            $href = self::absolute_url( $href, 'https://webrazzi.com' );
-            if ( preg_match( '#^https://webrazzi\.com/etkinlik/' . preg_quote( (string) $year, '#' ) . '/[^/?#]+/?$#i', $href ) ) {
-                $urls[ untrailingslashit( $href ) ] = true;
+
+            $href = self::absolute_url( $node->getAttribute( 'href' ), 'https://webrazzi.com' );
+            if ( ! preg_match( '#^https://webrazzi\.com/etkinlik/' . preg_quote( (string) $year, '#' ) . '/[^/?#]+/?$#i', $href ) ) {
+                continue;
+            }
+
+            $date = self::webrazzi_date_from_scope( $node, $title, $year );
+            if ( ! $date || $date < $today ) {
+                continue;
+            }
+
+            $key = untrailingslashit( $href );
+            $entries[ $key ] = array(
+                'title' => $title,
+                'date'  => $date,
+                'url'   => $href,
+            );
+        }
+
+        return array_values( $entries );
+    }
+
+    private static function webrazzi_date_from_scope( $node, $title, $year ) {
+        $scope = $node;
+        for ( $depth = 0; $depth < 6; $depth++ ) {
+            $scope = $scope ? $scope->parentNode : null;
+            if ( ! $scope ) {
+                break;
+            }
+
+            $text = self::clean_text( $scope->textContent );
+            if ( ! $text || false === stripos( $text, $title ) || strlen( $text ) > 1200 ) {
+                continue;
+            }
+
+            $date = self::first_turkish_date( $text, $year );
+            if ( $date ) {
+                return $date;
             }
         }
-        return array_keys( $urls );
+        return '';
+    }
+
+    private static function webrazzi_existing_candidate( $source_id, $entry ) {
+        $fingerprint = sha1(
+            absint( $source_id ) . '|' . self::normalize_text( $entry['title'] ) . '|' . $entry['date']
+        );
+        $ids = get_posts( array(
+            'post_type'      => 'event_candidate',
+            'post_status'    => 'any',
+            'posts_per_page' => 1,
+            'fields'         => 'ids',
+            'meta_key'       => 'candidate_fingerprint',
+            'meta_value'     => $fingerprint,
+            'no_found_rows'  => true,
+        ) );
+        if ( empty( $ids[0] ) ) {
+            return 0;
+        }
+
+        $candidate_id = absint( $ids[0] );
+        return 'webrazzi_events' === sanitize_key( (string) get_post_meta( $candidate_id, 'source_adapter', true ) )
+            ? $candidate_id
+            : 0;
+    }
+
+    private static function webrazzi_calendar_record( $entry, $calendar_url, $year ) {
+        $title = isset( $entry['title'] ) ? self::clean_text( $entry['title'] ) : '';
+        $date  = isset( $entry['date'] ) ? trim( (string) $entry['date'] ) : '';
+        $url   = isset( $entry['url'] ) ? esc_url_raw( $entry['url'] ) : '';
+
+        if ( ! $title || false === stripos( $title, (string) $year ) || ! preg_match( '/^20\d{2}-\d{2}-\d{2}$/', $date ) || ! $url ) {
+            return new WP_Error( 'webrazzi_calendar_record_invalid', 'Webrazzi takvim occurrence kimliği doğrulanamadı.' );
+        }
+
+        return array(
+            'title'             => $title,
+            'start_date'        => $date . ' 00:00:00',
+            'end_date'          => $date . ' 00:00:00',
+            'location_type'     => 'physical',
+            'venue'             => '',
+            'address'           => 'İstanbul',
+            'organizer'         => '',
+            'registration_link' => '',
+            'event_url'         => $url,
+            'source_url'        => $calendar_url,
+            'description'       => '',
+        );
     }
 
     private static function parse_webrazzi_detail( $html, $url, $year ) {
@@ -227,6 +325,8 @@ class Sektorel_Event_Source_Trusted_Discovery {
             }
         }
 
+        $organizer = false !== stripos( $body, 'Crenvo İK tarafından düzenlenen' ) ? 'Crenvo İK' : 'Webrazzi';
+
         return array(
             'title'             => $title,
             'start_date'        => $date . ' 00:00:00',
@@ -234,7 +334,7 @@ class Sektorel_Event_Source_Trusted_Discovery {
             'location_type'     => 'physical',
             'venue'             => $venue,
             'address'           => '',
-            'organizer'         => 'Webrazzi',
+            'organizer'         => $organizer,
             'registration_link' => self::first_link_by_text( $xpath, array( 'Bilet Al', 'Bilet' ), $url ),
             'event_url'         => $url,
             'source_url'        => $url,
