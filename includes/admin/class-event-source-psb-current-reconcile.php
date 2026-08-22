@@ -15,8 +15,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Sektorel_Event_Source_PSB_Current_Reconcile {
 
-    const SOURCE_ID  = 340;
-    const VERIFY_URL = 'https://psbanatolia.com/en/about-fair-identity-1.html';
+    const SOURCE_ID     = 340;
+    const VERIFY_URL_TR = 'https://psbanatolia.com/hakkimizda-fuar-kunyesi-1.html';
+    const VERIFY_URL_EN = 'https://psbanatolia.com/en/about-fair-identity-1.html';
 
     public static function init() {
         // Runtime orchestration is owned by Stage Registry. This class is
@@ -64,32 +65,9 @@ class Sektorel_Event_Source_PSB_Current_Reconcile {
     }
 
     private static function reconcile_candidate( $candidate_id ) {
-        $response = wp_safe_remote_get( self::VERIFY_URL, array(
-            'timeout'             => 12,
-            'redirection'         => 3,
-            'limit_response_size' => 524288,
-            'user-agent'          => 'SektorelAjandaBot/1.0; +' . home_url( '/' ),
-            'headers'             => array( 'Accept' => 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.5' ),
-        ) );
-        if ( is_wp_error( $response ) ) {
+        $evidence_url = self::verified_evidence_url();
+        if ( ! $evidence_url ) {
             return;
-        }
-
-        $code = (int) wp_remote_retrieve_response_code( $response );
-        if ( $code < 200 || $code >= 400 ) {
-            return;
-        }
-
-        $text = self::normalize( (string) wp_remote_retrieve_body( $response ) );
-        $signals = array(
-            'psb anatolia 2026',
-            'international landscaping ornamental plants garden arts and equipments fair',
-            '09 12 september 2026',
-        );
-        foreach ( $signals as $signal ) {
-            if ( false === strpos( $text, self::normalize( $signal ) ) ) {
-                return;
-            }
         }
 
         $title     = 'PSB Anatolia 2026 — Uluslararası Peyzaj, Süs Bitkileri, Bahçe Sanatları ve Ekipmanları Fuarı';
@@ -124,6 +102,7 @@ class Sektorel_Event_Source_PSB_Current_Reconcile {
                 update_post_meta( $candidate_id, 'candidate_duplicate_of', $duplicate_of );
                 update_post_meta( $candidate_id, 'candidate_resolved_at', current_time( 'mysql' ) );
                 update_post_meta( $candidate_id, 'candidate_verified_source_repair_signature', $signature );
+                update_post_meta( $candidate_id, 'candidate_verified_source_evidence_url', esc_url_raw( $evidence_url ) );
                 delete_post_meta( $candidate_id, 'candidate_match_signature' );
             }
             return;
@@ -156,9 +135,64 @@ class Sektorel_Event_Source_PSB_Current_Reconcile {
         update_post_meta( $candidate_id, 'candidate_fingerprint', $fingerprint );
         update_post_meta( $candidate_id, 'candidate_title_source', 'verified_official_source_identity' );
         update_post_meta( $candidate_id, 'candidate_verified_source_repair_signature', $signature );
+        update_post_meta( $candidate_id, 'candidate_verified_source_evidence_url', esc_url_raw( $evidence_url ) );
         update_post_meta( $candidate_id, 'candidate_verified_source_repaired_at', current_time( 'mysql' ) );
         delete_post_meta( $candidate_id, 'candidate_match_signature' );
         delete_post_meta( $candidate_id, 'candidate_verified_quality_signature' );
+    }
+
+    private static function verified_evidence_url() {
+        $surfaces = array(
+            array(
+                'url'     => self::VERIFY_URL_TR,
+                'signals' => array(
+                    'psb anatolia 2026',
+                    'uluslararasi peyzaj sus bitkileri bahce sanatlari ve ekipmanlari fuari',
+                    '09 12 eylul 2026',
+                ),
+            ),
+            array(
+                'url'     => self::VERIFY_URL_EN,
+                'signals' => array(
+                    'psb anatolia 2026',
+                    'international landscaping ornamental plants garden arts and equipments fair',
+                    '09 12 september 2026',
+                ),
+            ),
+        );
+
+        foreach ( $surfaces as $surface ) {
+            $response = wp_safe_remote_get( $surface['url'], array(
+                'timeout'             => 10,
+                'redirection'         => 3,
+                'limit_response_size' => 524288,
+                'user-agent'          => 'SektorelAjandaBot/1.0; +' . home_url( '/' ),
+                'headers'             => array( 'Accept' => 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.5' ),
+            ) );
+            if ( is_wp_error( $response ) ) {
+                continue;
+            }
+
+            $code = (int) wp_remote_retrieve_response_code( $response );
+            if ( $code < 200 || $code >= 400 ) {
+                continue;
+            }
+
+            $text = self::normalize( (string) wp_remote_retrieve_body( $response ) );
+            $valid = true;
+            foreach ( $surface['signals'] as $signal ) {
+                if ( false === strpos( $text, self::normalize( $signal ) ) ) {
+                    $valid = false;
+                    break;
+                }
+            }
+
+            if ( $valid ) {
+                return $surface['url'];
+            }
+        }
+
+        return '';
     }
 
     private static function normalize( $text ) {
