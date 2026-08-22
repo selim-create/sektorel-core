@@ -196,56 +196,97 @@ class Sektorel_Event_Source_Trusted_Discovery {
             return array();
         }
 
+        $section = self::webrazzi_upcoming_section( self::clean_text( $dom->textContent ) );
+        if ( ! $section ) {
+            return array();
+        }
+
         $xpath   = new DOMXPath( $dom );
         $entries = array();
         $today   = current_time( 'Y-m-d' );
+        $urls    = array();
 
         foreach ( $xpath->query( '//a[@href]' ) as $node ) {
-            $title = self::clean_text( $node->textContent );
-            if ( ! $title || false === stripos( $title, (string) $year ) ) {
-                continue;
-            }
-
             $href = self::absolute_url( $node->getAttribute( 'href' ), 'https://webrazzi.com' );
-            if ( ! preg_match( '#^https://webrazzi\.com/etkinlik/' . preg_quote( (string) $year, '#' ) . '/[^/?#]+/?$#i', $href ) ) {
+            if ( ! preg_match( '#^https://(?:www\.)?webrazzi\.com/etkinlik/' . preg_quote( (string) $year, '#' ) . '/[^/?#]+/?$#i', $href ) ) {
                 continue;
             }
 
-            $date = self::webrazzi_date_from_scope( $node, $title, $year );
+            $key = untrailingslashit( preg_replace( '#^https://www\.webrazzi\.com/#i', 'https://webrazzi.com/', $href ) );
+            if ( ! isset( $urls[ $key ] ) ) {
+                $urls[ $key ] = array( 'url' => $key, 'titles' => array() );
+            }
+
+            $anchor_text = self::clean_text( $node->textContent );
+            if ( $anchor_text && false !== stripos( $anchor_text, (string) $year ) ) {
+                $urls[ $key ]['titles'][ $anchor_text ] = true;
+            }
+        }
+
+        foreach ( $urls as $item ) {
+            $title = '';
+            foreach ( array_keys( $item['titles'] ) as $candidate_title ) {
+                if ( false !== stripos( $section, $candidate_title ) ) {
+                    $title = $candidate_title;
+                    break;
+                }
+            }
+            if ( ! $title ) {
+                continue;
+            }
+
+            $date = self::webrazzi_date_for_title( $section, $title, $year );
             if ( ! $date || $date < $today ) {
                 continue;
             }
 
-            $key = untrailingslashit( $href );
-            $entries[ $key ] = array(
+            $entries[ $item['url'] ] = array(
                 'title' => $title,
                 'date'  => $date,
-                'url'   => $href,
+                'url'   => $item['url'],
             );
         }
 
         return array_values( $entries );
     }
 
-    private static function webrazzi_date_from_scope( $node, $title, $year ) {
-        $scope = $node;
-        for ( $depth = 0; $depth < 6; $depth++ ) {
-            $scope = $scope ? $scope->parentNode : null;
-            if ( ! $scope ) {
-                break;
-            }
-
-            $text = self::clean_text( $scope->textContent );
-            if ( ! $text || false === stripos( $text, $title ) || strlen( $text ) > 1200 ) {
-                continue;
-            }
-
-            $date = self::first_turkish_date( $text, $year );
-            if ( $date ) {
-                return $date;
-            }
+    private static function webrazzi_upcoming_section( $text ) {
+        $text = self::clean_text( $text );
+        if ( ! $text ) {
+            return '';
         }
-        return '';
+
+        $start = stripos( $text, 'Yaklaşan Etkinlikler' );
+        if ( false === $start ) {
+            return '';
+        }
+
+        $end = stripos( $text, 'Geçmiş Etkinlikler', $start + strlen( 'Yaklaşan Etkinlikler' ) );
+        if ( false === $end || $end <= $start ) {
+            return '';
+        }
+
+        return trim( substr( $text, $start, $end - $start ) );
+    }
+
+    private static function webrazzi_date_for_title( $section, $title, $year ) {
+        $position = mb_stripos( $section, $title, 0, 'UTF-8' );
+        if ( false === $position ) {
+            return '';
+        }
+
+        $window_start = max( 0, $position - 180 );
+        $prefix = mb_substr( $section, $window_start, $position - $window_start, 'UTF-8' );
+        if ( ! preg_match_all(
+            '/\b\d{1,2}\s+(?:Ocak|Şubat|Mart|Nisan|Mayıs|Haziran|Temmuz|Ağustos|Eylül|Ekim|Kasım|Aralık)\s+' . preg_quote( (string) $year, '/' ) . '\b/iu',
+            $prefix,
+            $matches
+        ) || empty( $matches[0] ) ) {
+            return '';
+        }
+
+        $raw_date = end( $matches[0] );
+        return self::first_turkish_date( $raw_date, $year );
     }
 
     private static function webrazzi_existing_candidate( $source_id, $entry ) {
@@ -261,14 +302,37 @@ class Sektorel_Event_Source_Trusted_Discovery {
             'meta_value'     => $fingerprint,
             'no_found_rows'  => true,
         ) );
-        if ( empty( $ids[0] ) ) {
-            return 0;
+        if ( ! empty( $ids[0] ) ) {
+            $candidate_id = absint( $ids[0] );
+            if ( 'webrazzi_events' === sanitize_key( (string) get_post_meta( $candidate_id, 'source_adapter', true ) ) ) {
+                return $candidate_id;
+            }
         }
 
-        $candidate_id = absint( $ids[0] );
-        return 'webrazzi_events' === sanitize_key( (string) get_post_meta( $candidate_id, 'source_adapter', true ) )
-            ? $candidate_id
-            : 0;
+        $same_date = get_posts( array(
+            'post_type'      => 'event_candidate',
+            'post_status'    => 'any',
+            'posts_per_page' => 10,
+            'fields'         => 'ids',
+            'meta_query'     => array(
+                'relation' => 'AND',
+                array( 'key' => 'source_id', 'value' => absint( $source_id ) ),
+                array( 'key' => 'start_date', 'value' => $entry['date'], 'compare' => 'LIKE' ),
+                array( 'key' => 'source_adapter', 'value' => 'webrazzi_events' ),
+            ),
+            'no_found_rows' => true,
+        ) );
+
+        $target_url = untrailingslashit( preg_replace( '#^https://www\.webrazzi\.com/#i', 'https://webrazzi.com/', $entry['url'] ) );
+        foreach ( $same_date as $candidate_id ) {
+            $event_url = esc_url_raw( (string) get_post_meta( $candidate_id, 'event_url', true ) );
+            $event_url = untrailingslashit( preg_replace( '#^https://www\.webrazzi\.com/#i', 'https://webrazzi.com/', $event_url ) );
+            if ( $target_url && $target_url === $event_url ) {
+                return absint( $candidate_id );
+            }
+        }
+
+        return 0;
     }
 
     private static function webrazzi_calendar_record( $entry, $calendar_url, $year ) {
