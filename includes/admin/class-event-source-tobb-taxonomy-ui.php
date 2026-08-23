@@ -122,7 +122,8 @@ class Sektorel_Event_Source_TOBB_Taxonomy_UI {
         jQuery(function($){
             var nonce='<?php echo esc_js( wp_create_nonce( self::NONCE_ACTION ) ); ?>';
             $('.sektorel-tobb-picker').each(function(){
-                var root=$(this),input=root.find('.sektorel-tobb-search'),results=root.find('.sektorel-tobb-results'),hidden=root.find('.sektorel-tobb-value'),selected=root.find('.sektorel-tobb-selected'),timer=null,taxonomy=root.data('taxonomy');
+                var root=$(this),input=root.find('.sektorel-tobb-search'),results=root.find('.sektorel-tobb-results'),hidden=root.find('.sektorel-tobb-value'),selected=root.find('.sektorel-tobb-selected'),timer=null,taxonomy=root.data('taxonomy'),isSector=taxonomy==='sector';
+                if(isSector && parseInt(hidden.val(),10)>0){input.hide();}
                 input.on('input',function(){
                     clearTimeout(timer);var q=$.trim(input.val());
                     if(q.length<2){results.hide().empty();return;}
@@ -138,9 +139,9 @@ class Sektorel_Event_Source_TOBB_Taxonomy_UI {
                     },220);
                 });
                 results.on('click','.sektorel-tobb-result',function(){
-                    var button=$(this);hidden.val(button.data('id'));selected.find('.sektorel-tobb-selected-label').text(button.data('label'));selected.show();input.val('');results.hide().empty();
+                    var button=$(this);hidden.val(button.data('id'));selected.find('.sektorel-tobb-selected-label').text(button.data('label'));selected.show();input.val('');results.hide().empty();if(isSector){input.hide();}
                 });
-                root.on('click','.sektorel-tobb-clear',function(){hidden.val('0');selected.hide();input.val('').focus();});
+                root.on('click','.sektorel-tobb-clear',function(){hidden.val('0');selected.hide();results.hide().empty();input.val('').show().focus();});
             });
             $(document).on('click',function(e){if(!$(e.target).closest('.sektorel-tobb-picker').length){$('.sektorel-tobb-results').hide();}});
         });
@@ -295,17 +296,22 @@ class Sektorel_Event_Source_TOBB_Taxonomy_UI {
 
     private static function term_label( $term ) {
         if ( ! $term || is_wp_error( $term ) ) { return ''; }
-        $parts = array( $term->name );
+        $parts = array( self::clean_term_name( $term->name ) );
         $parent_id = absint( $term->parent );
         $guard = 0;
         while ( $parent_id && $guard < 5 ) {
             $parent = get_term( $parent_id, $term->taxonomy );
             if ( ! $parent || is_wp_error( $parent ) ) { break; }
-            array_unshift( $parts, $parent->name );
+            array_unshift( $parts, self::clean_term_name( $parent->name ) );
             $parent_id = absint( $parent->parent );
             $guard++;
         }
         return implode( ' › ', $parts );
+    }
+
+    private static function clean_term_name( $value ) {
+        $value = html_entity_decode( (string) $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+        return trim( wp_strip_all_tags( $value ) );
     }
 
     private static function normalize_key( $value ) {
