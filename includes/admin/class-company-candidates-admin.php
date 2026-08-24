@@ -35,7 +35,7 @@ class Sektorel_Company_Candidates_Admin {
         $result = Sektorel_Company_Candidate_Lifecycle::apply( $candidate_id );
         $args = array( 'post_type' => 'company', 'page' => 'sektorel-company-candidates' );
         if ( is_wp_error( $result ) ) {
-            $args['candidate_error'] = rawurlencode( $result->get_error_message() );
+            $args['candidate_error'] = $result->get_error_message();
         } else {
             $args['candidate_done'] = sanitize_key( $result['action'] ?? 'done' );
             $args['company_id'] = (int) ( $result['company_id'] ?? 0 );
