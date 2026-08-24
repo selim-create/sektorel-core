@@ -136,10 +136,24 @@ class Sektorel_Company_Candidates {
         if ( $existing_id ) {
             $existing = self::get( $existing_id );
             if ( $existing && 'pending' !== ( $existing['lifecycle_status'] ?? 'pending' ) ) {
-                $data['lifecycle_status'] = 'pending';
-                $data['applied_company_id'] = 0;
-                $data['applied_at'] = null;
+                $payload_changed = (string) ( $existing['payload_json'] ?? '' ) !== (string) $payload_json;
+                $match_changed   = (string) ( $existing['status'] ?? '' ) !== (string) $status
+                    || (int) ( $existing['matched_company_id'] ?? 0 ) !== (int) $match['id']
+                    || (string) ( $existing['match_method'] ?? '' ) !== sanitize_key( $match['method'] );
+
+                // A draft created from this candidate will naturally match that same
+                // company on the next scan. Treat that as idempotent, not new work.
+                $resolved_to_applied_company = 'matched' === $status
+                    && (int) ( $existing['applied_company_id'] ?? 0 ) > 0
+                    && (int) ( $existing['applied_company_id'] ?? 0 ) === (int) $match['id'];
+
+                if ( $payload_changed || ( $match_changed && ! $resolved_to_applied_company ) ) {
+                    $data['lifecycle_status']   = 'pending';
+                    $data['applied_company_id'] = 0;
+                    $data['applied_at']         = null;
+                }
             }
+
             $updated = $wpdb->update( $table, $data, array( 'id' => $existing_id ) );
             if ( false === $updated ) {
                 return new WP_Error( 'company_candidate_update_failed', $wpdb->last_error ?: 'Firma adayı güncellenemedi.' );
