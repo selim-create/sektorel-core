@@ -7,100 +7,89 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Deterministic company identity matcher shared by imports and future sources.
  *
- * No fuzzy matching is performed here. Ambiguous evidence always fails closed.
+ * No fuzzy matching is performed here. Ambiguous or conflicting evidence fails closed.
  */
 class Sektorel_Company_Matcher {
 
     public static function match( $input ) {
         $input = is_array( $input ) ? $input : array();
-
         $checks = array(
-            array( 'method' => 'mersis_number', 'value' => self::digits( $input['mersis_number'] ?? '' ), 'resolver' => 'match_meta_exact', 'meta_keys' => array( 'mersis_number', '_sektorel_mersis_number' ) ),
-            array( 'method' => 'tax_number', 'value' => self::digits( $input['tax_number'] ?? '' ), 'resolver' => 'match_meta_exact', 'meta_keys' => array( 'tax_number' ) ),
-            array( 'method' => 'trade_registry_number', 'value' => self::normalize_text( $input['trade_registry_number'] ?? '' ), 'resolver' => 'match_registry' ),
-            array( 'method' => 'domain', 'value' => self::domains( $input ), 'resolver' => 'match_domains' ),
-            array( 'method' => 'email', 'value' => self::emails( $input ), 'resolver' => 'match_emails' ),
-            array( 'method' => 'name_exact', 'value' => self::normalize_text( $input['company_name'] ?? $input['title'] ?? $input['official_name'] ?? '' ), 'resolver' => 'match_name' ),
+            array( 'method' => 'mersis_number', 'ids' => self::match_meta_exact( self::digits( $input['mersis_number'] ?? '' ), array( 'mersis_number', '_sektorel_mersis_number' ) ) ),
+            array( 'method' => 'tax_number', 'ids' => self::match_meta_exact( self::digits( $input['tax_number'] ?? '' ), array( 'tax_number' ) ) ),
+            array( 'method' => 'trade_registry_number', 'ids' => self::match_registry( $input ) ),
+            array( 'method' => 'domain', 'ids' => self::match_domains( self::domains( $input ) ) ),
+            array( 'method' => 'email', 'ids' => self::match_emails( self::emails( $input ) ) ),
+            array( 'method' => 'name_exact', 'ids' => self::match_name( self::raw_name( $input ) ) ),
         );
 
-        $evidence = array();
+        $resolved_company_id = 0;
+        $resolved_method     = '';
+        $evidence            = array();
+
         foreach ( $checks as $check ) {
-            if ( empty( $check['value'] ) ) {
+            $ids = array_values( array_unique( array_filter( array_map( 'intval', (array) $check['ids'] ) ) ) );
+            if ( empty( $ids ) ) {
                 continue;
             }
 
-            $resolver = $check['resolver'];
-            if ( 'match_meta_exact' === $resolver ) {
-                $ids = self::match_meta_exact( $check['value'], $check['meta_keys'] );
-            } elseif ( 'match_registry' === $resolver ) {
-                $ids = self::match_registry( $input );
-            } else {
-                $ids = self::$resolver( $check['value'] );
-            }
-
-            $ids = array_values( array_unique( array_filter( array_map( 'intval', $ids ) ) ) );
             if ( count( $ids ) > 1 ) {
                 return self::result( 'review', 0, $check['method'], true, array(
-                    'reason' => 'ambiguous_' . $check['method'],
+                    'reason'        => 'ambiguous_' . $check['method'],
                     'candidate_ids' => $ids,
+                    'evidence'      => $evidence,
                 ) );
             }
-            if ( 1 === count( $ids ) ) {
-                $company_id = (int) $ids[0];
-                $evidence[] = array( 'method' => $check['method'], 'company_id' => $company_id );
 
-                // A later strong signal pointing elsewhere must fail closed.
-                foreach ( array_slice( $checks, array_search( $check, $checks, true ) + 1 ) as $later_check ) {
-                    if ( empty( $later_check['value'] ) ) {
-                        continue;
-                    }
-                    $later_ids = array();
-                    if ( 'match_meta_exact' === $later_check['resolver'] ) {
-                        $later_ids = self::match_meta_exact( $later_check['value'], $later_check['meta_keys'] );
-                    } elseif ( 'match_registry' === $later_check['resolver'] ) {
-                        $later_ids = self::match_registry( $input );
-                    } else {
-                        $later_resolver = $later_check['resolver'];
-                        $later_ids = self::$later_resolver( $later_check['value'] );
-                    }
-                    $later_ids = array_values( array_unique( array_filter( array_map( 'intval', $later_ids ) ) ) );
-                    if ( $later_ids && ( 1 !== count( $later_ids ) || (int) $later_ids[0] !== $company_id ) ) {
-                        return self::result( 'review', 0, 'conflicting_evidence', true, array(
-                            'reason' => 'conflicting_evidence',
-                            'primary' => $evidence,
-                            'conflict_method' => $later_check['method'],
-                            'candidate_ids' => $later_ids,
-                        ) );
-                    }
-                }
+            $candidate_id = (int) $ids[0];
+            $evidence[] = array(
+                'method'     => $check['method'],
+                'company_id' => $candidate_id,
+            );
 
-                return self::result( 'matched', $company_id, $check['method'], false, array(
+            if ( ! $resolved_company_id ) {
+                $resolved_company_id = $candidate_id;
+                $resolved_method     = $check['method'];
+                continue;
+            }
+
+            if ( $resolved_company_id !== $candidate_id ) {
+                return self::result( 'review', 0, 'conflicting_evidence', true, array(
+                    'reason'   => 'conflicting_evidence',
                     'evidence' => $evidence,
                 ) );
             }
         }
 
-        return self::result( 'new', 0, 'new', false, array( 'reason' => 'no_deterministic_match' ) );
+        if ( $resolved_company_id ) {
+            return self::result( 'matched', $resolved_company_id, $resolved_method, false, array(
+                'evidence' => $evidence,
+            ) );
+        }
+
+        return self::result( 'new', 0, 'new', false, array(
+            'reason' => 'no_deterministic_match',
+        ) );
     }
 
     private static function result( $status, $company_id, $method, $ambiguous, $evidence ) {
         return array(
-            'status'     => $status,
-            'id'         => (int) $company_id,
-            'method'     => (string) $method,
-            'ambiguous'  => (bool) $ambiguous,
-            'evidence'   => $evidence,
+            'status'    => (string) $status,
+            'id'        => (int) $company_id,
+            'method'    => (string) $method,
+            'ambiguous' => (bool) $ambiguous,
+            'evidence'  => (array) $evidence,
         );
     }
 
     private static function match_meta_exact( $value, $meta_keys ) {
         global $wpdb;
-        if ( '' === (string) $value ) {
+        $value = trim( (string) $value );
+        if ( '' === $value || empty( $meta_keys ) ) {
             return array();
         }
 
         $placeholders = implode( ',', array_fill( 0, count( $meta_keys ), '%s' ) );
-        $params = array_merge( $meta_keys, array( (string) $value ) );
+        $params       = array_merge( array_values( $meta_keys ), array( $value ) );
         $sql = "SELECT DISTINCT pm.post_id
                 FROM {$wpdb->postmeta} pm
                 INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
@@ -109,17 +98,19 @@ class Sektorel_Company_Matcher {
                   AND p.post_type = 'company'
                   AND p.post_status NOT IN ('trash','auto-draft')
                 LIMIT 3";
+
         return $wpdb->get_col( $wpdb->prepare( $sql, $params ) );
     }
 
     private static function match_registry( $input ) {
-        $number = self::normalize_text( $input['trade_registry_number'] ?? '' );
+        $number = trim( sanitize_text_field( (string) ( $input['trade_registry_number'] ?? '' ) ) );
         if ( '' === $number ) {
             return array();
         }
 
-        $ids = self::match_meta_exact( $number, array( 'trade_registry_number' ) );
+        $ids    = self::match_meta_exact( $number, array( 'trade_registry_number' ) );
         $office = self::normalize_text( $input['trade_registry_office'] ?? '' );
+
         if ( ! $office || count( $ids ) <= 1 ) {
             return $ids;
         }
@@ -133,6 +124,7 @@ class Sektorel_Company_Matcher {
     private static function match_domains( $domains ) {
         global $wpdb;
         $matches = array();
+
         foreach ( (array) $domains as $domain ) {
             if ( ! $domain ) {
                 continue;
@@ -149,7 +141,7 @@ class Sektorel_Company_Matcher {
             ) );
 
             $like = '%' . $wpdb->esc_like( $domain ) . '%';
-            $ids = array_merge( $ids, $wpdb->get_col( $wpdb->prepare(
+            $ids  = array_merge( $ids, $wpdb->get_col( $wpdb->prepare(
                 "SELECT DISTINCT pm.post_id
                  FROM {$wpdb->postmeta} pm
                  INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
@@ -162,22 +154,24 @@ class Sektorel_Company_Matcher {
             ) ) );
 
             foreach ( array_unique( array_map( 'intval', $ids ) ) as $id ) {
-                $candidate_domains = self::company_domains( $id );
-                if ( in_array( $domain, $candidate_domains, true ) ) {
+                if ( in_array( $domain, self::company_domains( $id ), true ) ) {
                     $matches[] = $id;
                 }
             }
         }
+
         return array_values( array_unique( $matches ) );
     }
 
     private static function match_emails( $emails ) {
         global $wpdb;
         $matches = array();
+
         foreach ( (array) $emails as $email ) {
             if ( ! $email ) {
                 continue;
             }
+
             $ids = $wpdb->get_col( $wpdb->prepare(
                 "SELECT DISTINCT pm.post_id
                  FROM {$wpdb->postmeta} pm
@@ -189,40 +183,54 @@ class Sektorel_Company_Matcher {
                  LIMIT 20",
                 '%' . $wpdb->esc_like( $email ) . '%'
             ) );
+
             foreach ( array_unique( array_map( 'intval', $ids ) ) as $id ) {
                 if ( in_array( $email, self::company_emails( $id ), true ) ) {
                     $matches[] = $id;
                 }
             }
         }
+
         return array_values( array_unique( $matches ) );
     }
 
-    private static function match_name( $normalized_name ) {
+    private static function match_name( $raw_name ) {
         global $wpdb;
-        if ( '' === $normalized_name ) {
+        $raw_name = trim( wp_strip_all_tags( (string) $raw_name ) );
+        if ( '' === $raw_name ) {
             return array();
         }
 
-        $ids = $wpdb->get_col(
-            "SELECT ID FROM {$wpdb->posts}
+        $ids = $wpdb->get_col( $wpdb->prepare(
+            "SELECT ID
+             FROM {$wpdb->posts}
              WHERE post_type = 'company'
                AND post_status NOT IN ('trash','auto-draft')
-             ORDER BY ID DESC"
-        );
+               AND post_title = %s
+             LIMIT 3",
+            $raw_name
+        ) );
 
-        $matches = array();
-        foreach ( $ids as $id ) {
-            $title = self::normalize_text( get_the_title( (int) $id ) );
-            $official = self::normalize_text( get_post_meta( (int) $id, 'official_name', true ) );
-            if ( $normalized_name === $title || ( $official && $normalized_name === $official ) ) {
-                $matches[] = (int) $id;
-                if ( count( $matches ) >= 3 ) {
-                    break;
-                }
+        $official_ids = get_posts( array(
+            'post_type'      => 'company',
+            'post_status'    => 'any',
+            'fields'         => 'ids',
+            'posts_per_page' => 3,
+            'meta_key'       => 'official_name',
+            'meta_value'     => $raw_name,
+            'no_found_rows'  => true,
+        ) );
+
+        return array_values( array_unique( array_map( 'intval', array_merge( $ids, $official_ids ) ) ) );
+    }
+
+    private static function raw_name( $input ) {
+        foreach ( array( 'company_name', 'title', 'official_name' ) as $key ) {
+            if ( ! empty( $input[ $key ] ) ) {
+                return sanitize_text_field( (string) $input[ $key ] );
             }
         }
-        return $matches;
+        return '';
     }
 
     public static function normalize_text( $value ) {
@@ -284,17 +292,16 @@ class Sektorel_Company_Matcher {
     }
 
     private static function company_domains( $company_id ) {
-        $input = array(
-            'website' => get_post_meta( $company_id, 'website', true ),
+        return self::domains( array(
+            'website'             => get_post_meta( $company_id, 'website', true ),
             'additional_websites' => get_post_meta( $company_id, '_sektorel_additional_websites', true ),
-            'website_domains' => get_post_meta( $company_id, '_sektorel_import_domain', true ),
-        );
-        return self::domains( $input );
+            'website_domains'     => get_post_meta( $company_id, '_sektorel_import_domain', true ),
+        ) );
     }
 
     private static function company_emails( $company_id ) {
         return self::emails( array(
-            'email' => get_post_meta( $company_id, 'email', true ),
+            'email'             => get_post_meta( $company_id, 'email', true ),
             'additional_emails' => get_post_meta( $company_id, '_sektorel_additional_emails', true ),
         ) );
     }
