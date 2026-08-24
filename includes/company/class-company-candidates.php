@@ -24,7 +24,7 @@ class Sektorel_Company_Candidates {
 
     public static function maybe_install() {
         if ( self::DB_VERSION === (string) get_option( self::DB_OPTION, '' ) ) {
-            return;
+            return true;
         }
 
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
@@ -65,7 +65,14 @@ class Sektorel_Company_Candidates {
         ) {$charset};";
 
         dbDelta( $sql );
+
+        $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
+        if ( $exists !== $table ) {
+            return false;
+        }
+
         update_option( self::DB_OPTION, self::DB_VERSION, false );
+        return true;
     }
 
     /**
@@ -85,7 +92,9 @@ class Sektorel_Company_Candidates {
             return new WP_Error( 'invalid_company_source', 'Firma adayı için source_key zorunludur.' );
         }
 
-        self::maybe_install();
+        if ( ! self::maybe_install() ) {
+            return new WP_Error( 'company_candidate_table_unavailable', 'Firma adayı tablosu oluşturulamadı.' );
+        }
 
         $identity = self::identity_fields( $payload );
         if ( ! self::has_identity( $identity ) ) {
@@ -153,7 +162,9 @@ class Sektorel_Company_Candidates {
 
     public static function stats() {
         global $wpdb;
-        self::maybe_install();
+        if ( ! self::maybe_install() ) {
+            return array( 'total' => 0, 'new' => 0, 'matched' => 0, 'review' => 0 );
+        }
         $table = self::table_name();
 
         $rows = $wpdb->get_results(
