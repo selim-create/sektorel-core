@@ -6,7 +6,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /**
  * Persistent candidate store for automatic company discovery.
- * Candidates never publish companies by themselves.
  */
 class Sektorel_Company_Candidates {
 
@@ -141,8 +140,6 @@ class Sektorel_Company_Candidates {
                     || (int) ( $existing['matched_company_id'] ?? 0 ) !== (int) $match['id']
                     || (string) ( $existing['match_method'] ?? '' ) !== sanitize_key( $match['method'] );
 
-                // A draft created from this candidate will naturally match that same
-                // company on the next scan. Treat that as idempotent, not new work.
                 $resolved_to_applied_company = 'matched' === $status
                     && (int) ( $existing['applied_company_id'] ?? 0 ) > 0
                     && (int) ( $existing['applied_company_id'] ?? 0 ) === (int) $match['id'];
@@ -216,7 +213,7 @@ class Sektorel_Company_Candidates {
 
     public static function mark_applied( $candidate_id, $company_id, $lifecycle_status ) {
         global $wpdb;
-        $allowed = array( 'draft_created', 'enriched', 'matched_no_change' );
+        $allowed = array( 'published_created', 'enriched', 'matched_no_change' );
         $lifecycle_status = sanitize_key( $lifecycle_status );
         if ( ! in_array( $lifecycle_status, $allowed, true ) ) {
             return new WP_Error( 'invalid_company_candidate_lifecycle', 'Geçersiz lifecycle durumu.' );

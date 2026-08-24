@@ -5,10 +5,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Manual, fail-closed candidate lifecycle.
+ * Fail-closed candidate lifecycle.
  *
  * - matched candidates may fill only empty canonical fields.
- * - new candidates may create draft companies only.
+ * - new candidates may create published companies after a final deterministic rematch.
  * - review candidates never advance automatically.
  */
 class Sektorel_Company_Candidate_Lifecycle {
@@ -72,13 +72,13 @@ class Sektorel_Company_Candidate_Lifecycle {
 
         $title = self::first_value( $payload, array( 'company_name', 'official_name', 'title' ) );
         if ( '' === $title ) {
-            return new WP_Error( 'company_candidate_missing_name', 'Draft firma oluşturmak için firma unvanı gerekli.' );
+            return new WP_Error( 'company_candidate_missing_name', 'Firma yayınlamak için firma unvanı gerekli.' );
         }
 
         $post_id = wp_insert_post(
             array(
                 'post_type'   => 'company',
-                'post_status' => 'draft',
+                'post_status' => 'publish',
                 'post_title'  => sanitize_text_field( $title ),
                 'post_author' => get_current_user_id(),
             ),
@@ -92,14 +92,14 @@ class Sektorel_Company_Candidate_Lifecycle {
         update_post_meta( $post_id, 'official_name', sanitize_text_field( $title ) );
         self::enrich_existing( (int) $post_id, $payload, $candidate );
 
-        $marked = Sektorel_Company_Candidates::mark_applied( $candidate_id, (int) $post_id, 'draft_created' );
+        $marked = Sektorel_Company_Candidates::mark_applied( $candidate_id, (int) $post_id, 'published_created' );
         if ( is_wp_error( $marked ) ) {
             wp_trash_post( (int) $post_id );
             return $marked;
         }
 
         return array(
-            'action'     => 'draft_created',
+            'action'     => 'published_created',
             'company_id' => (int) $post_id,
         );
     }
