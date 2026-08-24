@@ -90,7 +90,7 @@ class Sektorel_Company_Candidates_Admin {
             </div>
 
             <div class="notice notice-info inline">
-                <p><strong>Fail-closed:</strong> Yeni aday yalnız <strong>taslak firma</strong> oluşturabilir. Eşleşen aday yalnız mevcut firmanın boş alanlarını doldurabilir. <code>review</code> adayları otomatik ilerlemez.</p>
+                <p><strong>Yayın politikası:</strong> Deterministic matcher'a göre temiz <code>new</code> aday doğrudan <strong>yayınlanmış firma</strong> oluşturabilir. Eşleşen aday yalnız mevcut firmanın boş alanlarını doldurabilir. <code>review</code> adayları otomatik ilerlemez.</p>
             </div>
 
             <table class="widefat striped" style="margin-top:18px;">
@@ -123,11 +123,11 @@ class Sektorel_Company_Candidates_Admin {
                             </td>
                             <td>
                                 <?php if ( $can_apply ) : ?>
-                                    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" onsubmit="return confirm('Bu aday işlensin mi? Yeni adaylarda yalnız taslak firma oluşturulur.');">
+                                    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" onsubmit="return confirm('Bu aday işlensin mi? Yeni aday doğrudan yayına alınacaktır.');">
                                         <input type="hidden" name="action" value="<?php echo esc_attr( self::ACTION ); ?>">
                                         <input type="hidden" name="candidate_id" value="<?php echo (int) $row['id']; ?>">
                                         <?php wp_nonce_field( self::ACTION . '_' . (int) $row['id'] ); ?>
-                                        <button type="submit" class="button button-small"><?php echo 'new' === $row['status'] ? 'Taslak Firma Oluştur' : 'Mevcut Firmayı Zenginleştir'; ?></button>
+                                        <button type="submit" class="button button-small"><?php echo 'new' === $row['status'] ? 'Firmayı Yayınla' : 'Mevcut Firmayı Zenginleştir'; ?></button>
                                     </form>
                                 <?php elseif ( 'review' === $row['status'] ) : ?>
                                     <span style="color:#b32d2e;font-weight:600;">Manuel inceleme gerekli</span>
