@@ -44,7 +44,7 @@ class Sektorel_Company_Directory {
                 'sector'   => array( 'type' => 'String' ),
                 'location' => array( 'type' => 'String' ),
                 'verified' => array( 'type' => 'Boolean', 'defaultValue' => false ),
-                'sort'     => array( 'type' => 'String', 'defaultValue' => 'newest' ),
+                'sort'     => array( 'type' => 'String', 'defaultValue' => 'priority' ),
                 'page'     => array( 'type' => 'Int', 'defaultValue' => 1 ),
                 'first'    => array( 'type' => 'Int', 'defaultValue' => self::DEFAULT_PER_PAGE ),
             ),
@@ -65,10 +65,10 @@ class Sektorel_Company_Directory {
             self::MAX_PER_PAGE
         );
 
-        $allowed_sorts = array( 'newest', 'oldest', 'alphabetical', 'verified', 'views' );
-        $sort = sanitize_key( $args['sort'] ?? 'newest' );
+        $allowed_sorts = array( 'priority', 'newest', 'oldest', 'alphabetical', 'verified', 'views' );
+        $sort = sanitize_key( $args['sort'] ?? 'priority' );
         if ( ! in_array( $sort, $allowed_sorts, true ) ) {
-            $sort = 'newest';
+            $sort = 'priority';
         }
 
         $query_args = array(
@@ -134,14 +134,56 @@ class Sektorel_Company_Directory {
                 $sort_meta_key = 'view_count';
                 break;
             case 'newest':
-            default:
                 $query_args['orderby'] = 'date';
                 $query_args['order']   = 'DESC';
+                break;
+            case 'priority':
+            default:
+                $query_args['_sektorel_directory_priority'] = 1;
                 break;
         }
 
         $clauses_filter = null;
-        if ( $sort_meta_key ) {
+        if ( 'priority' === $sort ) {
+            $clauses_filter = function( $clauses, $query ) {
+                if ( ! $query->get( '_sektorel_directory_priority' ) ) {
+                    return $clauses;
+                }
+
+                global $wpdb;
+                $featured_alias = 'sektorel_company_featured';
+                $origin_alias   = 'sektorel_company_origin';
+                $owner_alias    = 'sektorel_company_owner_link';
+
+                $clauses['join'] .= $wpdb->prepare(
+                    " LEFT JOIN {$wpdb->postmeta} AS {$featured_alias}
+                        ON ({$wpdb->posts}.ID = {$featured_alias}.post_id AND {$featured_alias}.meta_key = %s)",
+                    Sektorel_Company_Ranking::META_FEATURED
+                );
+                $clauses['join'] .= $wpdb->prepare(
+                    " LEFT JOIN {$wpdb->postmeta} AS {$origin_alias}
+                        ON ({$wpdb->posts}.ID = {$origin_alias}.post_id AND {$origin_alias}.meta_key = %s)",
+                    Sektorel_Company_Ranking::META_ORIGIN
+                );
+                $clauses['join'] .= $wpdb->prepare(
+                    " LEFT JOIN {$wpdb->usermeta} AS {$owner_alias}
+                        ON ({$wpdb->posts}.post_author = {$owner_alias}.user_id
+                            AND {$owner_alias}.meta_key = %s
+                            AND CAST({$owner_alias}.meta_value AS UNSIGNED) = {$wpdb->posts}.ID)",
+                    '_sektorel_company_id'
+                );
+                $clauses['groupby'] = "{$wpdb->posts}.ID";
+                $clauses['orderby'] = "CASE
+                    WHEN {$featured_alias}.meta_value = '1' THEN 1
+                    WHEN {$owner_alias}.umeta_id IS NOT NULL THEN 2
+                    WHEN {$origin_alias}.meta_value = '" . esc_sql( Sektorel_Company_Ranking::ORIGIN_AUTO_REGISTRY ) . "' THEN 4
+                    ELSE 3
+                END ASC, {$wpdb->posts}.post_date DESC, {$wpdb->posts}.ID DESC";
+
+                return $clauses;
+            };
+            add_filter( 'posts_clauses', $clauses_filter, 10, 2 );
+        } elseif ( $sort_meta_key ) {
             $query_args['_sektorel_directory_sort'] = $sort_meta_key;
             $clauses_filter = function( $clauses, $query ) use ( $sort_meta_key ) {
                 if ( $query->get( '_sektorel_directory_sort' ) !== $sort_meta_key ) {
