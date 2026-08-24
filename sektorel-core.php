@@ -49,6 +49,7 @@ class Sektorel_Core {
         if ( is_admin() ) {
             Sektorel_Demo_Importer::init();
             Sektorel_Company_Importer::init();
+            Sektorel_Company_Candidates_Admin::init();
             Sektorel_Event_Source_Admin::init();
             Sektorel_Event_Source_Role::init();
             Sektorel_Event_Source_TOBB::init();
@@ -136,6 +137,7 @@ class Sektorel_Core {
         require_once SEKTOREL_CORE_PATH . 'includes/fields/location-fields.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-demo-importer.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-company-importer.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-company-candidates-admin.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-admin.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-role.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-tobb.php';
