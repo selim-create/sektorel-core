@@ -154,6 +154,8 @@ class Sektorel_Company_Directory {
                 $featured_alias = 'sektorel_company_featured';
                 $origin_alias   = 'sektorel_company_origin';
                 $owner_alias    = 'sektorel_company_owner_link';
+                $logo_alias     = 'sektorel_company_logo';
+                $thumb_alias    = 'sektorel_company_thumbnail';
 
                 $clauses['join'] .= $wpdb->prepare(
                     " LEFT JOIN {$wpdb->postmeta} AS {$featured_alias}
@@ -172,13 +174,29 @@ class Sektorel_Company_Directory {
                             AND CAST({$owner_alias}.meta_value AS UNSIGNED) = {$wpdb->posts}.ID)",
                     '_sektorel_company_id'
                 );
+                $clauses['join'] .= $wpdb->prepare(
+                    " LEFT JOIN {$wpdb->postmeta} AS {$logo_alias}
+                        ON ({$wpdb->posts}.ID = {$logo_alias}.post_id AND {$logo_alias}.meta_key = %s)",
+                    'logo_image'
+                );
+                $clauses['join'] .= $wpdb->prepare(
+                    " LEFT JOIN {$wpdb->postmeta} AS {$thumb_alias}
+                        ON ({$wpdb->posts}.ID = {$thumb_alias}.post_id AND {$thumb_alias}.meta_key = %s)",
+                    '_thumbnail_id'
+                );
                 $clauses['groupby'] = "{$wpdb->posts}.ID";
                 $clauses['orderby'] = "CASE
                     WHEN {$featured_alias}.meta_value = '1' THEN 1
                     WHEN {$owner_alias}.umeta_id IS NOT NULL THEN 2
                     WHEN {$origin_alias}.meta_value = '" . esc_sql( Sektorel_Company_Ranking::ORIGIN_AUTO_REGISTRY ) . "' THEN 4
                     ELSE 3
-                END ASC, {$wpdb->posts}.post_date DESC, {$wpdb->posts}.ID DESC";
+                END ASC,
+                CASE
+                    WHEN NULLIF(TRIM(COALESCE({$logo_alias}.meta_value, '')), '') IS NOT NULL THEN 0
+                    WHEN CAST(COALESCE(NULLIF({$thumb_alias}.meta_value, ''), '0') AS UNSIGNED) > 0 THEN 0
+                    ELSE 1
+                END ASC,
+                {$wpdb->posts}.post_date DESC, {$wpdb->posts}.ID DESC";
 
                 return $clauses;
             };
