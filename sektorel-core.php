@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Sektorel Core
  * Description: Sektörel Ajanda projesi için CPT, Taxonomy ve API tanımlarını içeren çekirdek eklenti.
- * Version: 1.60.2
+ * Version: 1.60.3
  * Author: Sektörel Ajanda Dev Team
  * Text Domain: sektorel-core
  */
@@ -38,6 +38,7 @@ class Sektorel_Core {
         Sektorel_Token_Service::init();
         Sektorel_Company_Media::init();
         Sektorel_Company_Ranking::init();
+        Sektorel_Company_Candidates::init();
         Sektorel_Job_Application_Files::init();
         Sektorel_Job_Application_Access_Fix::init();
         Sektorel_Mail_Observability::init();
@@ -48,6 +49,7 @@ class Sektorel_Core {
         if ( is_admin() ) {
             Sektorel_Demo_Importer::init();
             Sektorel_Company_Importer::init();
+            Sektorel_Company_Candidates_Admin::init();
             Sektorel_Event_Source_Admin::init();
             Sektorel_Event_Source_Role::init();
             Sektorel_Event_Source_TOBB::init();
@@ -125,6 +127,8 @@ class Sektorel_Core {
         require_once SEKTOREL_CORE_PATH . 'includes/taxonomies/class-sector.php';
         require_once SEKTOREL_CORE_PATH . 'includes/taxonomies/class-location.php';
         require_once SEKTOREL_CORE_PATH . 'includes/company/class-company-ranking.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/company/class-company-matcher.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/company/class-company-candidates.php';
         require_once SEKTOREL_CORE_PATH . 'includes/fields/company-fields.php';
         require_once SEKTOREL_CORE_PATH . 'includes/fields/lead-fields.php';
         require_once SEKTOREL_CORE_PATH . 'includes/fields/event-fields.php';
@@ -133,6 +137,7 @@ class Sektorel_Core {
         require_once SEKTOREL_CORE_PATH . 'includes/fields/location-fields.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-demo-importer.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-company-importer.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-company-candidates-admin.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-admin.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-role.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-tobb.php';
