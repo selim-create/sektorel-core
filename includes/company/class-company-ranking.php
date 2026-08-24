@@ -27,6 +27,10 @@ class Sektorel_Company_Ranking {
         add_action( 'save_post_company', array( __CLASS__, 'ensure_origin' ), 20, 3 );
         add_action( 'add_meta_boxes_company', array( __CLASS__, 'add_meta_box' ) );
         add_action( 'save_post_company', array( __CLASS__, 'save_admin_fields' ), 40, 3 );
+        add_action( 'added_post_meta', array( __CLASS__, 'maybe_mark_import_origin' ), 30, 4 );
+        add_action( 'updated_post_meta', array( __CLASS__, 'maybe_mark_import_origin' ), 30, 4 );
+        add_action( 'added_user_meta', array( __CLASS__, 'maybe_mark_user_owned_origin' ), 30, 4 );
+        add_action( 'updated_user_meta', array( __CLASS__, 'maybe_mark_user_owned_origin' ), 30, 4 );
         add_action( 'graphql_register_types', array( __CLASS__, 'register_graphql_fields' ) );
     }
 
@@ -117,6 +121,39 @@ class Sektorel_Company_Ranking {
         }
 
         update_post_meta( $post_id, self::META_ORIGIN, $origin );
+    }
+
+    public static function maybe_mark_import_origin( $meta_id, $object_id, $meta_key, $meta_value ) {
+        if ( ! in_array( $meta_key, array( '_sektorel_import_domain', '_sektorel_source_sites', '_sektorel_source_detail_urls' ), true ) ) {
+            return;
+        }
+        if ( 'company' !== get_post_type( $object_id ) || '' === trim( (string) $meta_value ) ) {
+            return;
+        }
+        if ( 'claimed' === self::ownership_status( $object_id ) ) {
+            return;
+        }
+
+        $current = sanitize_key( (string) get_post_meta( $object_id, self::META_ORIGIN, true ) );
+        if ( '' === $current || self::ORIGIN_ADMIN_MANUAL === $current ) {
+            update_post_meta( $object_id, self::META_ORIGIN, self::ORIGIN_ADMIN_IMPORT );
+        }
+    }
+
+    public static function maybe_mark_user_owned_origin( $meta_id, $user_id, $meta_key, $meta_value ) {
+        if ( '_sektorel_company_id' !== $meta_key ) {
+            return;
+        }
+
+        $company_id = (int) $meta_value;
+        if ( ! $company_id || ! self::user_owns_company( (int) $user_id, $company_id ) ) {
+            return;
+        }
+
+        $current = sanitize_key( (string) get_post_meta( $company_id, self::META_ORIGIN, true ) );
+        if ( '' === $current || self::ORIGIN_ADMIN_MANUAL === $current ) {
+            update_post_meta( $company_id, self::META_ORIGIN, self::ORIGIN_USER_CREATED );
+        }
     }
 
     public static function set_origin( $company_id, $origin ) {
