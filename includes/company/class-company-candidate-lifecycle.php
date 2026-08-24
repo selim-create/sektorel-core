@@ -19,6 +19,10 @@ class Sektorel_Company_Candidate_Lifecycle {
             return new WP_Error( 'company_candidate_missing', 'Firma adayı bulunamadı.' );
         }
 
+        if ( 'pending' !== ( $candidate['lifecycle_status'] ?? 'pending' ) ) {
+            return new WP_Error( 'company_candidate_already_applied', 'Bu firma adayı daha önce işlendi. Yeni kaynak verisi gelmedikçe tekrar uygulanamaz.' );
+        }
+
         $payload = json_decode( (string) $candidate['payload_json'], true );
         $payload = is_array( $payload ) ? $payload : array();
         $status  = sanitize_key( $candidate['status'] ?? '' );
@@ -52,11 +56,17 @@ class Sektorel_Company_Candidate_Lifecycle {
         // Re-run deterministic matching immediately before creation to prevent races/duplicates.
         $rematch = Sektorel_Company_Matcher::match( $payload );
         if ( 'matched' === ( $rematch['status'] ?? '' ) && ! empty( $rematch['id'] ) ) {
-            Sektorel_Company_Candidates::update_match( $candidate_id, $rematch );
+            $updated = Sektorel_Company_Candidates::update_match( $candidate_id, $rematch );
+            if ( is_wp_error( $updated ) ) {
+                return $updated;
+            }
             return new WP_Error( 'company_candidate_became_match', 'Aday artık mevcut bir firmayla eşleşiyor. Sayfayı yenileyip tekrar kontrol edin.' );
         }
         if ( 'review' === ( $rematch['status'] ?? '' ) ) {
-            Sektorel_Company_Candidates::update_match( $candidate_id, $rematch );
+            $updated = Sektorel_Company_Candidates::update_match( $candidate_id, $rematch );
+            if ( is_wp_error( $updated ) ) {
+                return $updated;
+            }
             return new WP_Error( 'company_candidate_became_review', 'Aday yeni deterministic kanıt nedeniyle incelemeye düştü.' );
         }
 
@@ -84,6 +94,7 @@ class Sektorel_Company_Candidate_Lifecycle {
 
         $marked = Sektorel_Company_Candidates::mark_applied( $candidate_id, (int) $post_id, 'draft_created' );
         if ( is_wp_error( $marked ) ) {
+            wp_trash_post( (int) $post_id );
             return $marked;
         }
 
