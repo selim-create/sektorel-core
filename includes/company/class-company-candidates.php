@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Sektorel_Company_Candidates {
 
-    const DB_VERSION = '1';
+    const DB_VERSION = '2';
     const DB_OPTION  = 'sektorel_company_candidates_db_version';
 
     public static function init() {
@@ -48,6 +48,9 @@ class Sektorel_Company_Candidates {
             status varchar(24) NOT NULL DEFAULT 'new',
             matched_company_id bigint(20) unsigned NOT NULL DEFAULT 0,
             match_method varchar(64) NOT NULL DEFAULT '',
+            lifecycle_status varchar(32) NOT NULL DEFAULT 'pending',
+            applied_company_id bigint(20) unsigned NOT NULL DEFAULT 0,
+            applied_at datetime NULL,
             payload_json longtext NULL,
             evidence_json longtext NULL,
             first_seen_at datetime NOT NULL,
@@ -58,7 +61,9 @@ class Sektorel_Company_Candidates {
             UNIQUE KEY fingerprint (fingerprint),
             KEY source_key (source_key),
             KEY status (status),
+            KEY lifecycle_status (lifecycle_status),
             KEY matched_company_id (matched_company_id),
+            KEY applied_company_id (applied_company_id),
             KEY domain (domain),
             KEY mersis_number (mersis_number),
             KEY tax_number (tax_number)
@@ -75,11 +80,6 @@ class Sektorel_Company_Candidates {
         return true;
     }
 
-    /**
-     * Store/update one source record and evaluate it against canonical companies.
-     *
-     * @return array|WP_Error Candidate summary.
-     */
     public static function upsert( $source_key, $source_record_key, $payload, $source_url = '' ) {
         global $wpdb;
 
@@ -134,15 +134,22 @@ class Sektorel_Company_Candidates {
         );
 
         if ( $existing_id ) {
+            $existing = self::get( $existing_id );
+            if ( $existing && 'pending' !== ( $existing['lifecycle_status'] ?? 'pending' ) ) {
+                $data['lifecycle_status'] = 'pending';
+                $data['applied_company_id'] = 0;
+                $data['applied_at'] = null;
+            }
             $updated = $wpdb->update( $table, $data, array( 'id' => $existing_id ) );
             if ( false === $updated ) {
                 return new WP_Error( 'company_candidate_update_failed', $wpdb->last_error ?: 'Firma adayı güncellenemedi.' );
             }
             $candidate_id = $existing_id;
         } else {
-            $data['fingerprint']   = $fingerprint;
-            $data['first_seen_at'] = $now;
-            $data['created_at']    = $now;
+            $data['fingerprint']      = $fingerprint;
+            $data['lifecycle_status'] = 'pending';
+            $data['first_seen_at']    = $now;
+            $data['created_at']       = $now;
             $inserted = $wpdb->insert( $table, $data );
             if ( false === $inserted ) {
                 return new WP_Error( 'company_candidate_insert_failed', $wpdb->last_error ?: 'Firma adayı kaydedilemedi.' );
@@ -160,18 +167,66 @@ class Sektorel_Company_Candidates {
         );
     }
 
+    public static function get( $candidate_id ) {
+        global $wpdb;
+        if ( ! self::maybe_install() ) {
+            return null;
+        }
+        $table = self::table_name();
+        return $wpdb->get_row(
+            $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d LIMIT 1", (int) $candidate_id ),
+            ARRAY_A
+        );
+    }
+
+    public static function update_match( $candidate_id, $match ) {
+        global $wpdb;
+        $status = in_array( $match['status'] ?? '', array( 'matched', 'new', 'review' ), true ) ? $match['status'] : 'review';
+        $table  = self::table_name();
+        $ok = $wpdb->update(
+            $table,
+            array(
+                'status'             => $status,
+                'matched_company_id' => (int) ( $match['id'] ?? 0 ),
+                'match_method'       => sanitize_key( $match['method'] ?? '' ),
+                'evidence_json'      => wp_json_encode( $match['evidence'] ?? array(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ),
+                'lifecycle_status'   => 'pending',
+                'applied_company_id' => 0,
+                'applied_at'         => null,
+                'updated_at'         => current_time( 'mysql', true ),
+            ),
+            array( 'id' => (int) $candidate_id )
+        );
+        return false === $ok ? new WP_Error( 'company_candidate_match_update_failed', $wpdb->last_error ?: 'Aday eşleşmesi güncellenemedi.' ) : true;
+    }
+
+    public static function mark_applied( $candidate_id, $company_id, $lifecycle_status ) {
+        global $wpdb;
+        $allowed = array( 'draft_created', 'enriched', 'matched_no_change' );
+        $lifecycle_status = sanitize_key( $lifecycle_status );
+        if ( ! in_array( $lifecycle_status, $allowed, true ) ) {
+            return new WP_Error( 'invalid_company_candidate_lifecycle', 'Geçersiz lifecycle durumu.' );
+        }
+        $ok = $wpdb->update(
+            self::table_name(),
+            array(
+                'lifecycle_status'   => $lifecycle_status,
+                'applied_company_id' => (int) $company_id,
+                'applied_at'         => current_time( 'mysql', true ),
+                'updated_at'         => current_time( 'mysql', true ),
+            ),
+            array( 'id' => (int) $candidate_id )
+        );
+        return false === $ok ? new WP_Error( 'company_candidate_apply_update_failed', $wpdb->last_error ?: 'Aday lifecycle durumu güncellenemedi.' ) : true;
+    }
+
     public static function stats() {
         global $wpdb;
         if ( ! self::maybe_install() ) {
             return array( 'total' => 0, 'new' => 0, 'matched' => 0, 'review' => 0 );
         }
         $table = self::table_name();
-
-        $rows = $wpdb->get_results(
-            "SELECT status, COUNT(*) AS total FROM {$table} GROUP BY status",
-            ARRAY_A
-        );
-
+        $rows = $wpdb->get_results( "SELECT status, COUNT(*) AS total FROM {$table} GROUP BY status", ARRAY_A );
         $stats = array( 'total' => 0, 'new' => 0, 'matched' => 0, 'review' => 0 );
         foreach ( (array) $rows as $row ) {
             $status = sanitize_key( $row['status'] ?? '' );
@@ -188,7 +243,6 @@ class Sektorel_Company_Candidates {
         $domains = Sektorel_Company_Matcher::domains( $payload );
         $emails  = Sektorel_Company_Matcher::emails( $payload );
         $name    = $payload['company_name'] ?? $payload['title'] ?? $payload['official_name'] ?? '';
-
         return array(
             'normalized_name'       => mb_substr( Sektorel_Company_Matcher::normalize_text( $name ), 0, 255 ),
             'domain'                => mb_substr( (string) ( $domains[0] ?? '' ), 0, 191 ),
@@ -212,7 +266,6 @@ class Sektorel_Company_Candidates {
         if ( $source_record_key ) {
             return hash( 'sha256', $source_key . '|record|' . $source_record_key );
         }
-
         $stable_identity = array_filter( array(
             $identity['mersis_number'],
             $identity['tax_number'],
@@ -221,7 +274,6 @@ class Sektorel_Company_Candidates {
             $identity['email'],
             $identity['normalized_name'],
         ) );
-
         return hash( 'sha256', $source_key . '|identity|' . implode( '|', $stable_identity ) );
     }
 }
