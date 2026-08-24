@@ -87,13 +87,17 @@ class Sektorel_Company_Candidates {
 
         self::maybe_install();
 
-        $identity     = self::identity_fields( $payload );
-        $fingerprint  = self::fingerprint( $source_key, $source_record_key, $identity );
-        $match        = Sektorel_Company_Matcher::match( $payload );
-        $status       = in_array( $match['status'], array( 'matched', 'new', 'review' ), true ) ? $match['status'] : 'review';
-        $now          = current_time( 'mysql', true );
-        $table        = self::table_name();
-        $payload_json = wp_json_encode( $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
+        $identity = self::identity_fields( $payload );
+        if ( ! self::has_identity( $identity ) ) {
+            return new WP_Error( 'invalid_company_candidate', 'Firma adayı için firma adı veya en az bir güvenilir kimlik alanı zorunludur.' );
+        }
+
+        $fingerprint   = self::fingerprint( $source_key, $source_record_key, $identity );
+        $match         = Sektorel_Company_Matcher::match( $payload );
+        $status        = in_array( $match['status'], array( 'matched', 'new', 'review' ), true ) ? $match['status'] : 'review';
+        $now           = current_time( 'mysql', true );
+        $table         = self::table_name();
+        $payload_json  = wp_json_encode( $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
         $evidence_json = wp_json_encode( $match['evidence'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
 
         $existing_id = (int) $wpdb->get_var( $wpdb->prepare(
@@ -102,22 +106,22 @@ class Sektorel_Company_Candidates {
         ) );
 
         $data = array(
-            'source_key'             => $source_key,
-            'source_record_key'      => mb_substr( $source_record_key, 0, 191 ),
-            'source_url'             => $source_url,
-            'normalized_name'        => $identity['normalized_name'],
-            'domain'                 => $identity['domain'],
-            'email'                  => $identity['email'],
-            'mersis_number'          => $identity['mersis_number'],
-            'tax_number'             => $identity['tax_number'],
-            'trade_registry_number'  => $identity['trade_registry_number'],
-            'status'                 => $status,
-            'matched_company_id'     => (int) $match['id'],
-            'match_method'           => sanitize_key( $match['method'] ),
-            'payload_json'           => $payload_json,
-            'evidence_json'          => $evidence_json,
-            'last_seen_at'           => $now,
-            'updated_at'             => $now,
+            'source_key'            => $source_key,
+            'source_record_key'     => mb_substr( $source_record_key, 0, 191 ),
+            'source_url'            => $source_url,
+            'normalized_name'       => $identity['normalized_name'],
+            'domain'                => $identity['domain'],
+            'email'                 => $identity['email'],
+            'mersis_number'         => $identity['mersis_number'],
+            'tax_number'            => $identity['tax_number'],
+            'trade_registry_number' => $identity['trade_registry_number'],
+            'status'                => $status,
+            'matched_company_id'    => (int) $match['id'],
+            'match_method'          => sanitize_key( $match['method'] ),
+            'payload_json'          => $payload_json,
+            'evidence_json'         => $evidence_json,
+            'last_seen_at'          => $now,
+            'updated_at'            => $now,
         );
 
         if ( $existing_id ) {
@@ -127,7 +131,7 @@ class Sektorel_Company_Candidates {
             }
             $candidate_id = $existing_id;
         } else {
-            $data['fingerprint']  = $fingerprint;
+            $data['fingerprint']   = $fingerprint;
             $data['first_seen_at'] = $now;
             $data['created_at']    = $now;
             $inserted = $wpdb->insert( $table, $data );
@@ -182,6 +186,15 @@ class Sektorel_Company_Candidates {
             'tax_number'            => mb_substr( preg_replace( '/\D+/', '', (string) ( $payload['tax_number'] ?? '' ) ), 0, 32 ),
             'trade_registry_number' => mb_substr( sanitize_text_field( (string) ( $payload['trade_registry_number'] ?? '' ) ), 0, 120 ),
         );
+    }
+
+    private static function has_identity( $identity ) {
+        foreach ( array( 'normalized_name', 'domain', 'email', 'mersis_number', 'tax_number', 'trade_registry_number' ) as $key ) {
+            if ( ! empty( $identity[ $key ] ) ) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static function fingerprint( $source_key, $source_record_key, $identity ) {
