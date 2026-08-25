@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Sektorel Core
  * Description: Sektörel Ajanda projesi için CPT, Taxonomy ve API tanımlarını içeren çekirdek eklenti.
- * Version: 1.60.8
+ * Version: 1.60.9
  * Author: Sektörel Ajanda Dev Team
  * Text Domain: sektorel-core
  */
@@ -43,6 +43,7 @@ class Sektorel_Core {
         Sektorel_Job_Application_Access_Fix::init();
         Sektorel_Mail_Observability::init();
         Sektorel_Event_Reminders::init();
+        Sektorel_Headless_Routing::init();
         add_action( 'init', array( $this, 'register_post_types' ) );
         add_action( 'init', array( $this, 'register_taxonomies' ) );
         add_action( 'init', array( $this, 'init_fields' ) );
@@ -138,6 +139,7 @@ class Sektorel_Core {
         require_once SEKTOREL_CORE_PATH . 'includes/fields/career-fields.php';
         require_once SEKTOREL_CORE_PATH . 'includes/fields/location-fields.php';
         require_once SEKTOREL_CORE_PATH . 'includes/fields/seo-fields.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/headless/class-headless-routing.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-demo-importer.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-company-importer.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-company-importer-shared-matcher.php';
