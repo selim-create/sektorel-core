@@ -36,5 +36,31 @@ class Sektorel_Location_Taxonomy {
         );
 
         register_taxonomy( 'location', array( 'company', 'lead', 'event', 'post' ), $args );
+
+        // Rank Math Pro Link Genius builds its General Settings JSON by querying
+        // terms for every UI-visible taxonomy attached to every public post type.
+        // With tens of thousands of hierarchical location terms, WordPress can
+        // spend enough time preparing the hierarchy to stall authenticated
+        // wp-admin requests even though Rank Math requests only a small page of
+        // terms. Keep the taxonomy hierarchical everywhere else, but avoid that
+        // hierarchy expansion for this one settings-time lookup.
+        if ( is_admin() && false === has_filter( 'get_terms_args', array( __CLASS__, 'optimize_rank_math_term_query' ) ) ) {
+            add_filter( 'get_terms_args', array( __CLASS__, 'optimize_rank_math_term_query' ), 10, 2 );
+        }
+    }
+
+    public static function optimize_rank_math_term_query( $args, $taxonomies ) {
+        if ( ! is_admin() || ! doing_filter( 'rank_math/settings/general' ) ) {
+            return $args;
+        }
+
+        if ( ! in_array( 'location', (array) $taxonomies, true ) ) {
+            return $args;
+        }
+
+        $args['hierarchical'] = false;
+        $args['pad_counts']   = false;
+
+        return $args;
     }
 }
