@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Sektorel Core
  * Description: Sektörel Ajanda projesi için CPT, Taxonomy ve API tanımlarını içeren çekirdek eklenti.
- * Version: 1.60.9
+ * Version: 1.61.0
  * Author: Sektörel Ajanda Dev Team
  * Text Domain: sektorel-core
  */
@@ -44,6 +44,7 @@ class Sektorel_Core {
         Sektorel_Mail_Observability::init();
         Sektorel_Event_Reminders::init();
         Sektorel_Headless_Routing::init();
+        Sektorel_Content_Category_Foundation::init();
         add_action( 'init', array( $this, 'register_post_types' ) );
         add_action( 'init', array( $this, 'register_taxonomies' ) );
         add_action( 'init', array( $this, 'init_fields' ) );
@@ -72,7 +73,7 @@ class Sektorel_Core {
             Sektorel_Event_Candidate_Confidence::init();
             Sektorel_Event_HTML_Safe_Queue::init();
             Sektorel_Event_Candidate_Filter_Safety::init();
-            Sektorel_Event_Candidate_HTML_Container_Filter::init();
+            Sektorel_Event_HTML_Container_Filter::init();
             Sektorel_Event_Candidate_HTML_Stale_Filter::init();
             Sektorel_Event_Candidate_HTML_Time_Proximity::init();
             Sektorel_Event_Candidate_HTML::init();
@@ -139,6 +140,7 @@ class Sektorel_Core {
         require_once SEKTOREL_CORE_PATH . 'includes/fields/career-fields.php';
         require_once SEKTOREL_CORE_PATH . 'includes/fields/location-fields.php';
         require_once SEKTOREL_CORE_PATH . 'includes/fields/seo-fields.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/content/class-content-category-foundation.php';
         require_once SEKTOREL_CORE_PATH . 'includes/headless/class-headless-routing.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-demo-importer.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-company-importer.php';
