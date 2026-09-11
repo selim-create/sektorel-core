@@ -4,25 +4,22 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
+require_once __DIR__ . '/class-content-source-tobb-candidate-identity.php';
+
 /**
  * Source-specific URL/date enrichment for TOBB content candidates.
  *
  * TOBB RSS feeds do not reliably expose publication dates and may emit
- * relative `Detay.php?...` links. Content sources historically used the site
- * root as base_url, which can turn those links into `/Detay.php?...` instead
- * of the canonical `/Sayfalar/Detay.php?...` URL. This class repairs that
- * deterministic TOBB-only case and then reads the publication date from the
- * canonical detail page before manual candidate triage.
- *
- * No AI call, draft creation or automatic publishing happens here.
+ * relative `Detay.php?...` links. This class repairs deterministic TOBB-only
+ * URL shapes and reads the publication date from the canonical detail page.
  */
 class Sektorel_Content_Source_TOBB_Detail_Date {
 
-    const CACHE_VERSION = '2';
+    const CACHE_VERSION = '3';
     const CACHE_TTL = 7 * DAY_IN_SECONDS;
     const MISS_CACHE_TTL = 5 * MINUTE_IN_SECONDS;
     const TIMEOUT = 10;
-    const MAX_BODY_SIZE = 786432; // 768 KB.
+    const MAX_BODY_SIZE = 786432;
     const CANONICAL_BASE_URL = 'https://www.tobb.org.tr/Sayfalar/';
 
     public static function init() {
@@ -30,19 +27,14 @@ class Sektorel_Content_Source_TOBB_Detail_Date {
             return;
         }
 
-        // Keep future RSS relative-link resolution correct before a scan starts.
+        Sektorel_Content_Source_TOBB_Candidate_Identity::init();
+
         add_action( 'wp_ajax_sektorel_content_prepare_scans', array( __CLASS__, 'normalize_source_configuration' ), 1 );
         add_action( 'wp_ajax_sektorel_content_scan_batch', array( __CLASS__, 'normalize_source_configuration' ), 1 );
         add_action( 'admin_post_sektorel_content_scan_source', array( __CLASS__, 'normalize_source_configuration' ), 1 );
-
-        // Run before Sektorel_Content_Candidate_Triage (default priority 10).
         add_action( 'wp_ajax_sektorel_content_triage_batch', array( __CLASS__, 'enrich_next_batch' ), 1 );
     }
 
-    /**
-     * Repair the seeded TOBB source base path so relative `Detay.php` links are
-     * resolved against `/Sayfalar/` on all future scans.
-     */
     public static function normalize_source_configuration() {
         if ( ! current_user_can( 'manage_options' ) ) {
             return;
@@ -108,8 +100,6 @@ class Sektorel_Content_Source_TOBB_Detail_Date {
             ARRAY_A
         );
 
-        // At the beginning of a re-triage run rows are still REVIEW until the
-        // priority-10 triage callback reopens them, so enrich REVIEW as fallback.
         if ( ! $rows ) {
             $rows = $wpdb->get_results(
                 $wpdb->prepare(
@@ -146,8 +136,6 @@ class Sektorel_Content_Source_TOBB_Detail_Date {
             return false;
         }
 
-        // Persist the canonical repair even if the remote date lookup fails, so
-        // the next scan/triage and admin links no longer carry the root Detay.php URL.
         if ( $url !== $raw_url ) {
             self::repair_candidate_url( $row, $url );
             $row['source_url'] = $url;
@@ -175,7 +163,6 @@ class Sektorel_Content_Source_TOBB_Detail_Date {
 
     private static function repair_candidate_url( $row, $url ) {
         global $wpdb;
-
         $candidate_id = absint( $row['id'] ?? 0 );
         if ( ! $candidate_id || ! $url ) {
             return false;
@@ -204,7 +191,6 @@ class Sektorel_Content_Source_TOBB_Detail_Date {
 
     private static function persist_success( $row, $url, $result ) {
         global $wpdb;
-
         $candidate_id = absint( $row['id'] ?? 0 );
         if ( ! $candidate_id ) {
             return false;
@@ -249,7 +235,6 @@ class Sektorel_Content_Source_TOBB_Detail_Date {
 
     private static function record_resolution_failure( $row, $code, $details = array() ) {
         global $wpdb;
-
         $candidate_id = absint( $row['id'] ?? 0 );
         if ( ! $candidate_id ) {
             return;
@@ -388,9 +373,6 @@ class Sektorel_Content_Source_TOBB_Detail_Date {
         return sprintf( '%04d-%02d-%02d 00:00:00', $year, $month, $day );
     }
 
-    /**
-     * Canonicalize only the known TOBB detail-page shapes.
-     */
     private static function canonicalize_tobb_detail_url( $url ) {
         $url = trim( html_entity_decode( (string) $url, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
         if ( ! $url ) {
