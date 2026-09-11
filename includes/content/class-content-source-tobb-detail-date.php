@@ -7,6 +7,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 require_once __DIR__ . '/class-content-source-tobb-candidate-identity.php';
 require_once __DIR__ . '/class-content-source-tobb-latest-date.php';
 require_once __DIR__ . '/class-content-source-tobb-archive-date.php';
+require_once __DIR__ . '/class-content-detail-extractor.php';
+require_once __DIR__ . '/class-content-ai-draft-processor.php';
+require_once dirname( __DIR__ ) . '/admin/class-content-ai-draft-admin.php';
 
 /**
  * Backward-compatible TOBB date enrichment facade.
@@ -25,6 +28,8 @@ class Sektorel_Content_Source_TOBB_Detail_Date {
         }
 
         Sektorel_Content_Source_TOBB_Candidate_Identity::init();
+        Sektorel_Content_AI_Draft_Processor::init();
+        Sektorel_Content_AI_Draft_Admin::init();
 
         add_action( 'wp_ajax_sektorel_content_prepare_scans', array( __CLASS__, 'normalize_source_configuration' ), 1 );
         add_action( 'wp_ajax_sektorel_content_scan_batch', array( __CLASS__, 'normalize_source_configuration' ), 1 );
