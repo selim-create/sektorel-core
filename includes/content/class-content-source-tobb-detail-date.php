@@ -9,13 +9,12 @@ require_once __DIR__ . '/class-content-source-tobb-candidate-identity.php';
 /**
  * Source-specific URL/date enrichment for TOBB content candidates.
  *
- * TOBB RSS feeds do not reliably expose publication dates and may emit
- * relative `Detay.php?...` links. This class repairs deterministic TOBB-only
- * URL shapes and reads the publication date from the canonical detail page.
+ * Execution is intentionally inline with the triage loop so the exact
+ * candidate being evaluated is enriched first and then re-read from DB.
  */
 class Sektorel_Content_Source_TOBB_Detail_Date {
 
-    const CACHE_VERSION = '3';
+    const CACHE_VERSION = '4';
     const CACHE_TTL = 7 * DAY_IN_SECONDS;
     const MISS_CACHE_TTL = 5 * MINUTE_IN_SECONDS;
     const TIMEOUT = 10;
@@ -32,7 +31,6 @@ class Sektorel_Content_Source_TOBB_Detail_Date {
         add_action( 'wp_ajax_sektorel_content_prepare_scans', array( __CLASS__, 'normalize_source_configuration' ), 1 );
         add_action( 'wp_ajax_sektorel_content_scan_batch', array( __CLASS__, 'normalize_source_configuration' ), 1 );
         add_action( 'admin_post_sektorel_content_scan_source', array( __CLASS__, 'normalize_source_configuration' ), 1 );
-        add_action( 'wp_ajax_sektorel_content_triage_batch', array( __CLASS__, 'enrich_next_batch' ), 1 );
     }
 
     public static function normalize_source_configuration() {
@@ -41,7 +39,7 @@ class Sektorel_Content_Source_TOBB_Detail_Date {
         }
 
         $definitions = array(
-            'tobb_news' => 'https://www.tobb.org.tr/Sayfalar/RssFeeder.php?List=Haberler',
+            'tobb_news'          => 'https://www.tobb.org.tr/Sayfalar/RssFeeder.php?List=Haberler',
             'tobb_announcements' => 'https://www.tobb.org.tr/Sayfalar/RssFeeder.php?List=DuyurularListesi',
         );
 
@@ -72,121 +70,48 @@ class Sektorel_Content_Source_TOBB_Detail_Date {
         }
     }
 
-    public static function enrich_next_batch() {
-        if ( ! current_user_can( 'manage_options' ) ) {
-            return;
-        }
-
-        $nonce = isset( $_POST['nonce'] ) ? sanitize_text_field( wp_unslash( $_POST['nonce'] ) ) : '';
-        if ( ! $nonce || ! wp_verify_nonce( $nonce, Sektorel_Content_Candidate_Triage::NONCE_ACTION ) ) {
-            return;
-        }
-
-        global $wpdb;
-        $table = Sektorel_Content_Candidates::table_name();
-
-        $rows = $wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT id, source_key, source_url, canonical_url, normalized_url, canonical_hash, published_at, evidence_json, normalized_payload
-                 FROM {$table}
-                 WHERE status = %s
-                   AND ( published_at IS NULL OR published_at = '' )
-                   AND source_key IN ( 'tobb_news', 'tobb_announcements' )
-                 ORDER BY id ASC
-                 LIMIT %d",
-                Sektorel_Content_Candidates::STATUS_NEW,
-                Sektorel_Content_Candidate_Triage::BATCH_SIZE
-            ),
-            ARRAY_A
-        );
-
-        if ( ! $rows ) {
-            $rows = $wpdb->get_results(
-                $wpdb->prepare(
-                    "SELECT id, source_key, source_url, canonical_url, normalized_url, canonical_hash, published_at, evidence_json, normalized_payload
-                     FROM {$table}
-                     WHERE status = %s
-                       AND ( published_at IS NULL OR published_at = '' )
-                       AND source_key IN ( 'tobb_news', 'tobb_announcements' )
-                     ORDER BY id ASC
-                     LIMIT %d",
-                    Sektorel_Content_Candidates::STATUS_REVIEW,
-                    Sektorel_Content_Candidate_Triage::BATCH_SIZE
-                ),
-                ARRAY_A
-            );
-        }
-
-        foreach ( (array) $rows as $row ) {
-            self::enrich_candidate( $row );
-        }
-    }
-
-    private static function enrich_candidate( $row ) {
+    /**
+     * Enrich the exact TOBB candidate that triage is about to evaluate.
+     * Always returns the freshest DB row available.
+     */
+    public static function enrich_candidate_for_triage( $row ) {
+        $row = is_array( $row ) ? $row : array();
         $candidate_id = absint( $row['id'] ?? 0 );
-        $raw_url = trim( (string) ( ! empty( $row['canonical_url'] ) ? $row['canonical_url'] : ( $row['source_url'] ?? '' ) ) );
+        $source_key   = sanitize_key( $row['source_key'] ?? '' );
 
-        if ( ! $candidate_id ) {
-            return false;
+        if ( ! $candidate_id || ! in_array( $source_key, array( 'tobb_news', 'tobb_announcements' ), true ) ) {
+            return $row;
         }
 
+        if ( ! empty( $row['published_at'] ) ) {
+            return $row;
+        }
+
+        $row = Sektorel_Content_Source_TOBB_Candidate_Identity::repair_candidate( $row );
+        $raw_url = trim( (string) ( ! empty( $row['canonical_url'] ) ? $row['canonical_url'] : ( $row['source_url'] ?? '' ) ) );
         $url = self::canonicalize_tobb_detail_url( $raw_url );
+
         if ( ! $url ) {
             self::record_resolution_failure( $row, 'unsupported_url', array( 'attempted_url' => $raw_url ) );
-            return false;
-        }
-
-        if ( $url !== $raw_url ) {
-            self::repair_candidate_url( $row, $url );
-            $row['source_url'] = $url;
-            $row['canonical_url'] = $url;
-            $row['normalized_url'] = $url;
-            $row['canonical_hash'] = hash( 'sha256', $url );
+            return self::fresh_row( $candidate_id, $row );
         }
 
         $result = self::resolve_date( $url );
-        if ( ! is_array( $result ) || empty( $result['published_at'] ) ) {
+        if ( empty( $result['published_at'] ) ) {
             self::record_resolution_failure(
                 $row,
-                is_array( $result ) && ! empty( $result['error_code'] ) ? $result['error_code'] : 'date_resolution_failed',
+                ! empty( $result['error_code'] ) ? $result['error_code'] : 'date_resolution_failed',
                 array(
                     'attempted_url' => $url,
-                    'http_status'   => is_array( $result ) ? absint( $result['http_status'] ?? 0 ) : 0,
-                    'message'       => is_array( $result ) ? sanitize_text_field( $result['message'] ?? '' ) : '',
+                    'http_status'   => absint( $result['http_status'] ?? 0 ),
+                    'message'       => sanitize_text_field( $result['message'] ?? '' ),
                 )
             );
-            return false;
+            return self::fresh_row( $candidate_id, $row );
         }
 
-        return self::persist_success( $row, $url, $result );
-    }
-
-    private static function repair_candidate_url( $row, $url ) {
-        global $wpdb;
-        $candidate_id = absint( $row['id'] ?? 0 );
-        if ( ! $candidate_id || ! $url ) {
-            return false;
-        }
-
-        $normalized = self::decode_json_array( $row['normalized_payload'] ?? '' );
-        $normalized['url'] = $url;
-
-        $updated = $wpdb->update(
-            Sektorel_Content_Candidates::table_name(),
-            array(
-                'source_url'         => $url,
-                'canonical_url'      => $url,
-                'normalized_url'     => $url,
-                'canonical_hash'     => hash( 'sha256', $url ),
-                'normalized_payload' => wp_json_encode( $normalized, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ),
-                'updated_at'         => current_time( 'mysql', true ),
-            ),
-            array( 'id' => $candidate_id ),
-            array( '%s', '%s', '%s', '%s', '%s', '%s' ),
-            array( '%d' )
-        );
-
-        return false !== $updated;
+        self::persist_success( $row, $url, $result );
+        return self::fresh_row( $candidate_id, $row );
     }
 
     private static function persist_success( $row, $url, $result ) {
@@ -213,7 +138,7 @@ class Sektorel_Content_Source_TOBB_Detail_Date {
         $normalized['published_at'] = $result['published_at'];
         $normalized['published_source'] = 'tobb_detail_page';
 
-        $updated = $wpdb->update(
+        return false !== $wpdb->update(
             Sektorel_Content_Candidates::table_name(),
             array(
                 'source_url'         => $url,
@@ -229,8 +154,6 @@ class Sektorel_Content_Source_TOBB_Detail_Date {
             array( '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' ),
             array( '%d' )
         );
-
-        return false !== $updated;
     }
 
     private static function record_resolution_failure( $row, $code, $details = array() ) {
@@ -391,9 +314,7 @@ class Sektorel_Content_Source_TOBB_Detail_Date {
 
         $path = '/' . ltrim( (string) $parts['path'], '/' );
         $path_lower = strtolower( $path );
-        if ( '/detay.php' === $path_lower ) {
-            $path = '/Sayfalar/Detay.php';
-        } elseif ( '/sayfalar/detay.php' === $path_lower ) {
+        if ( '/detay.php' === $path_lower || '/sayfalar/detay.php' === $path_lower ) {
             $path = '/Sayfalar/Detay.php';
         } elseif ( '/sayfalar/eng/detay.php' === $path_lower ) {
             $path = '/Sayfalar/Eng/Detay.php';
@@ -414,11 +335,22 @@ class Sektorel_Content_Source_TOBB_Detail_Date {
         return esc_url_raw( $canonical, array( 'https' ) );
     }
 
+    private static function fresh_row( $candidate_id, $fallback ) {
+        global $wpdb;
+        $fresh = $wpdb->get_row(
+            $wpdb->prepare(
+                'SELECT * FROM ' . Sektorel_Content_Candidates::table_name() . ' WHERE id = %d LIMIT 1',
+                absint( $candidate_id )
+            ),
+            ARRAY_A
+        );
+        return is_array( $fresh ) ? $fresh : ( is_array( $fallback ) ? $fallback : array() );
+    }
+
     private static function decode_json_array( $value ) {
         if ( ! $value ) {
             return array();
         }
-
         $decoded = json_decode( (string) $value, true );
         return is_array( $decoded ) ? $decoded : array();
     }

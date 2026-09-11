@@ -13,7 +13,7 @@ class Sektorel_Content_Candidate_Triage {
     const NONCE_ACTION = 'sektorel_content_candidate_triage';
     const BATCH_SIZE = 25;
     const DEFAULT_FRESHNESS_DAYS = 45;
-    const TRIAGE_VERSION = 2;
+    const TRIAGE_VERSION = 3;
     const RUN_TTL = 30 * MINUTE_IN_SECONDS;
 
     public static function init() {
@@ -93,6 +93,14 @@ class Sektorel_Content_Candidate_Triage {
         $messages = array();
 
         foreach ( $rows as $row ) {
+            if (
+                empty( $row['published_at'] )
+                && in_array( sanitize_key( $row['source_key'] ?? '' ), array( 'tobb_news', 'tobb_announcements' ), true )
+                && class_exists( 'Sektorel_Content_Source_TOBB_Detail_Date' )
+            ) {
+                $row = Sektorel_Content_Source_TOBB_Detail_Date::enrich_candidate_for_triage( $row );
+            }
+
             $result = self::evaluate( $row );
             $saved  = self::persist( (int) $row['id'], $row, $result );
 
@@ -168,6 +176,10 @@ class Sektorel_Content_Candidate_Triage {
 
         if ( null === $age_days ) {
             $blocking[] = 'yayın tarihi yok';
+            $diagnostic = self::publication_date_diagnostic( $candidate );
+            if ( $diagnostic ) {
+                $blocking[] = $diagnostic;
+            }
         } elseif ( $age_days < -2 ) {
             $blocking[] = 'gelecek tarihli';
         } elseif ( $age_days > $freshness_days ) {
@@ -246,6 +258,33 @@ class Sektorel_Content_Candidate_Triage {
         return false === $updated
             ? new WP_Error( 'content_triage_update_failed', $wpdb->last_error ?: 'Candidate triage sonucu kaydedilemedi.' )
             : true;
+    }
+
+    private static function publication_date_diagnostic( $candidate ) {
+        $source_key = sanitize_key( $candidate['source_key'] ?? '' );
+        if ( ! in_array( $source_key, array( 'tobb_news', 'tobb_announcements' ), true ) ) {
+            return '';
+        }
+
+        $evidence = array();
+        if ( ! empty( $candidate['evidence_json'] ) ) {
+            $decoded = json_decode( (string) $candidate['evidence_json'], true );
+            if ( is_array( $decoded ) ) {
+                $evidence = $decoded;
+            }
+        }
+
+        if ( ! empty( $evidence['publication_date_resolution']['error_code'] ) ) {
+            $code = sanitize_key( $evidence['publication_date_resolution']['error_code'] );
+            $http = absint( $evidence['publication_date_resolution']['http_status'] ?? 0 );
+            return 'TOBB tarih çözümleme: ' . $code . ( $http ? ' (HTTP ' . $http . ')' : '' );
+        }
+
+        if ( ! empty( $evidence['tobb_candidate_identity']['error_code'] ) ) {
+            return 'TOBB kimlik çözümleme: ' . sanitize_key( $evidence['tobb_candidate_identity']['error_code'] );
+        }
+
+        return 'TOBB tarih çözümleme: tanı yok';
     }
 
     private static function source_freshness_days( $source_id ) {
