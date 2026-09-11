@@ -93,56 +93,111 @@ class Sektorel_Sitemap_Snapshot {
         ), DAY_IN_SECONDS );
     }
 
+    /**
+     * Return only location landing pages that can actually contain published
+     * companies. A district relation also makes its parent city eligible.
+     *
+     * This intentionally differs from the generic location taxonomy endpoint:
+     * sitemap.xml must not advertise thousands of empty city/district pages.
+     */
     public static function locations() {
-        $cache_key = 'sektorel_sitemap_locations_v1';
+        $cache_key = 'sektorel_sitemap_locations_v2';
         $cached    = get_transient( $cache_key );
         if ( is_array( $cached ) ) {
             return self::response( $cached, DAY_IN_SECONDS );
         }
 
         global $wpdb;
-        $rows = $wpdb->get_results(
-            "SELECT t.term_id, t.slug, tt.parent, tm.meta_value AS location_type
-             FROM {$wpdb->terms} t
+
+        $direct_rows = $wpdb->get_results(
+            "SELECT DISTINCT
+                    t.term_id,
+                    t.slug,
+                    tt.parent,
+                    tm.meta_value AS location_type
+             FROM {$wpdb->posts} p
+             INNER JOIN {$wpdb->term_relationships} tr
+                ON tr.object_id = p.ID
              INNER JOIN {$wpdb->term_taxonomy} tt
-                ON tt.term_id = t.term_id AND tt.taxonomy = 'location'
+                ON tt.term_taxonomy_id = tr.term_taxonomy_id
+               AND tt.taxonomy = 'location'
+             INNER JOIN {$wpdb->terms} t
+                ON t.term_id = tt.term_id
              INNER JOIN {$wpdb->termmeta} tm
-                ON tm.term_id = t.term_id AND tm.meta_key = 'location_type'
-             WHERE tm.meta_value IN ('city', 'district')
+                ON tm.term_id = t.term_id
+               AND tm.meta_key = 'location_type'
+             WHERE p.post_type = 'company'
+               AND p.post_status = 'publish'
+               AND tm.meta_value IN ('city', 'district')
              ORDER BY t.term_id ASC",
             ARRAY_A
         );
 
+        $city_ids = array();
+        foreach ( $direct_rows as $row ) {
+            $type = (string) ( $row['location_type'] ?? '' );
+            if ( 'city' === $type ) {
+                $city_ids[ (int) $row['term_id'] ] = true;
+            } elseif ( 'district' === $type && ! empty( $row['parent'] ) ) {
+                $city_ids[ (int) $row['parent'] ] = true;
+            }
+        }
+
         $cities_by_id = array();
-        foreach ( $rows as $row ) {
-            if ( 'city' === (string) $row['location_type'] ) {
-                $cities_by_id[ (int) $row['term_id'] ] = (string) $row['slug'];
+        if ( $city_ids ) {
+            $city_id_list = implode( ',', array_map( 'absint', array_keys( $city_ids ) ) );
+            $city_rows = $wpdb->get_results(
+                "SELECT DISTINCT
+                        t.term_id,
+                        t.slug
+                 FROM {$wpdb->terms} t
+                 INNER JOIN {$wpdb->term_taxonomy} tt
+                    ON tt.term_id = t.term_id
+                   AND tt.taxonomy = 'location'
+                 INNER JOIN {$wpdb->termmeta} tm
+                    ON tm.term_id = t.term_id
+                   AND tm.meta_key = 'location_type'
+                   AND tm.meta_value = 'city'
+                 WHERE t.term_id IN ({$city_id_list})
+                 ORDER BY t.term_id ASC",
+                ARRAY_A
+            );
+
+            foreach ( $city_rows as $city_row ) {
+                $cities_by_id[ (int) $city_row['term_id'] ] = (string) $city_row['slug'];
             }
         }
 
         $cities = array();
-        $districts = array();
-        foreach ( $rows as $row ) {
-            $type = (string) $row['location_type'];
-            $slug = (string) $row['slug'];
-            $id   = (int) $row['term_id'];
+        foreach ( $cities_by_id as $city_id => $city_slug ) {
+            $cities[] = array(
+                'id'   => (int) $city_id,
+                'slug' => $city_slug,
+            );
+        }
 
-            if ( 'city' === $type ) {
-                $cities[] = array( 'id' => $id, 'slug' => $slug );
+        $districts = array();
+        foreach ( $direct_rows as $row ) {
+            if ( 'district' !== (string) ( $row['location_type'] ?? '' ) ) {
                 continue;
             }
 
-            $parent_id = (int) $row['parent'];
-            if ( isset( $cities_by_id[ $parent_id ] ) ) {
-                $districts[] = array(
-                    'id'        => $id,
-                    'slug'      => $slug,
-                    'city_slug' => $cities_by_id[ $parent_id ],
-                );
+            $parent_id = (int) ( $row['parent'] ?? 0 );
+            if ( ! isset( $cities_by_id[ $parent_id ] ) ) {
+                continue;
             }
+
+            $districts[] = array(
+                'id'        => (int) $row['term_id'],
+                'slug'      => (string) $row['slug'],
+                'city_slug' => $cities_by_id[ $parent_id ],
+            );
         }
 
-        $payload = array( 'cities' => $cities, 'districts' => $districts );
+        $payload = array(
+            'cities'    => $cities,
+            'districts' => $districts,
+        );
         set_transient( $cache_key, $payload, self::SNAPSHOT_CACHE_TTL );
 
         return self::response( $payload, DAY_IN_SECONDS );
