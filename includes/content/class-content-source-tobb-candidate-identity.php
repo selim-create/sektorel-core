@@ -6,67 +6,28 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /**
  * Repairs TOBB content-candidate detail URLs from deterministic RSS identity.
- *
- * Historical TOBB candidate rows may carry a non-canonical path even though
- * the stable `rid` identity is still present in source_url, canonical_url,
- * source_item_key or raw/normalized payload. Rebuild the canonical detail URL
- * before the source-specific publication-date resolver runs.
  */
 class Sektorel_Content_Source_TOBB_Candidate_Identity {
 
-    const VERSION = '1';
+    const VERSION = '2';
 
     public static function init() {
-        if ( ! is_admin() ) {
-            return;
-        }
-
-        // Run before the TOBB detail-date resolver (priority 1).
-        add_action( 'wp_ajax_sektorel_content_triage_batch', array( __CLASS__, 'repair_next_batch' ), 0 );
+        // Inline triage enrichment owns execution order. No independent AJAX hook.
     }
 
-    public static function repair_next_batch() {
-        if ( ! current_user_can( 'manage_options' ) ) {
-            return;
-        }
-
-        $nonce = isset( $_POST['nonce'] ) ? sanitize_text_field( wp_unslash( $_POST['nonce'] ) ) : '';
-        if ( ! $nonce || ! wp_verify_nonce( $nonce, Sektorel_Content_Candidate_Triage::NONCE_ACTION ) ) {
-            return;
-        }
-
-        global $wpdb;
-        $table = Sektorel_Content_Candidates::table_name();
-
-        $rows = $wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT id, source_key, source_item_key, source_url, canonical_url, normalized_url,
-                        canonical_hash, published_at, raw_payload, normalized_payload, evidence_json
-                 FROM {$table}
-                 WHERE status IN ( %s, %s )
-                   AND ( published_at IS NULL OR published_at = '' )
-                   AND source_key IN ( 'tobb_news', 'tobb_announcements' )
-                 ORDER BY id ASC
-                 LIMIT %d",
-                Sektorel_Content_Candidates::STATUS_NEW,
-                Sektorel_Content_Candidates::STATUS_REVIEW,
-                Sektorel_Content_Candidate_Triage::BATCH_SIZE
-            ),
-            ARRAY_A
-        );
-
-        foreach ( (array) $rows as $row ) {
-            self::repair_candidate( $row );
-        }
-    }
-
-    private static function repair_candidate( $row ) {
+    /**
+     * Repair one TOBB candidate and return the refreshed DB row.
+     *
+     * @param array $row Candidate DB row.
+     * @return array Candidate DB row after repair/evidence update.
+     */
+    public static function repair_candidate( $row ) {
         global $wpdb;
 
         $candidate_id = absint( $row['id'] ?? 0 );
         $source_key   = sanitize_key( $row['source_key'] ?? '' );
         if ( ! $candidate_id || ! in_array( $source_key, array( 'tobb_news', 'tobb_announcements' ), true ) ) {
-            return false;
+            return is_array( $row ) ? $row : array();
         }
 
         $identity = self::find_identity( $row );
@@ -77,7 +38,7 @@ class Sektorel_Content_Source_TOBB_Candidate_Identity {
                 'checked_at' => gmdate( 'c' ),
                 'version'    => self::VERSION,
             ) );
-            return false;
+            return self::fresh_row( $candidate_id, $row );
         }
 
         $list = 'tobb_news' === $source_key ? 'Haberler' : 'DuyurularListesi';
@@ -91,7 +52,14 @@ class Sektorel_Content_Source_TOBB_Candidate_Identity {
         $canonical = esc_url_raw( $canonical, array( 'https' ) );
 
         if ( ! $canonical ) {
-            return false;
+            self::record_evidence( $row, array(
+                'status'     => 'failed',
+                'error_code' => 'canonical_url_failed',
+                'rid'        => (int) $identity['rid'],
+                'checked_at' => gmdate( 'c' ),
+                'version'    => self::VERSION,
+            ) );
+            return self::fresh_row( $candidate_id, $row );
         }
 
         $normalized = self::decode_json_array( $row['normalized_payload'] ?? '' );
@@ -107,7 +75,7 @@ class Sektorel_Content_Source_TOBB_Candidate_Identity {
             'version'         => self::VERSION,
         );
 
-        $updated = $wpdb->update(
+        $wpdb->update(
             Sektorel_Content_Candidates::table_name(),
             array(
                 'source_url'         => $canonical,
@@ -123,7 +91,7 @@ class Sektorel_Content_Source_TOBB_Candidate_Identity {
             array( '%d' )
         );
 
-        return false !== $updated;
+        return self::fresh_row( $candidate_id, $row );
     }
 
     private static function find_identity( $row ) {
@@ -168,8 +136,6 @@ class Sektorel_Content_Source_TOBB_Candidate_Identity {
             return absint( $match[1] );
         }
 
-        // Some feeds may expose only a compact numeric GUID. Accept it only
-        // when it is sufficiently long to look like TOBB's numeric record id.
         if ( preg_match( '/^\d{3,12}$/', $value ) ) {
             return absint( $value );
         }
@@ -200,11 +166,22 @@ class Sektorel_Content_Source_TOBB_Candidate_Identity {
         );
     }
 
+    private static function fresh_row( $candidate_id, $fallback ) {
+        global $wpdb;
+        $fresh = $wpdb->get_row(
+            $wpdb->prepare(
+                'SELECT * FROM ' . Sektorel_Content_Candidates::table_name() . ' WHERE id = %d LIMIT 1',
+                absint( $candidate_id )
+            ),
+            ARRAY_A
+        );
+        return is_array( $fresh ) ? $fresh : ( is_array( $fallback ) ? $fallback : array() );
+    }
+
     private static function decode_json_array( $value ) {
         if ( ! $value ) {
             return array();
         }
-
         $decoded = json_decode( (string) $value, true );
         return is_array( $decoded ) ? $decoded : array();
     }
