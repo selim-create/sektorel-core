@@ -7,10 +7,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Central configuration and cost-control service for Sektörel Core.
  *
- * Runtime precedence:
- * 1. wp-config.php constants
- * 2. encrypted/sanitized WordPress options managed by Sektörel Core
- * 3. conservative built-in defaults
+ * Secrets may be provided by wp-config.php or the encrypted admin store.
+ * Operational choices (model, daily limit, budget) are managed by the
+ * Sektörel Core panel so editors do not need to edit wp-config.php.
  */
 class Sektorel_Core_Settings {
 
@@ -18,9 +17,12 @@ class Sektorel_Core_Settings {
     const OPTION_SECRETS = 'sektorel_core_secrets';
     const DEFAULT_DAILY_LIMIT = 20;
     const DEFAULT_MONTHLY_BUDGET = 15.00;
+    const DEFAULT_MODEL = 'gpt-5.6-terra';
 
     public static function init() {
-        self::define_runtime_constants();
+        self::migrate_legacy_runtime_settings();
+        self::define_runtime_credentials();
+
         if ( is_admin() ) {
             add_action( 'wp_ajax_sektorel_content_ai_draft_batch', array( __CLASS__, 'guard_monthly_budget' ), 0 );
         }
@@ -33,11 +35,11 @@ class Sektorel_Core_Settings {
         return wp_parse_args(
             $saved,
             array(
-                'openai_model'          => '',
-                'content_daily_limit'   => self::DEFAULT_DAILY_LIMIT,
-                'monthly_budget_usd'    => self::DEFAULT_MONTHLY_BUDGET,
-                'budget_warning_pct'    => 80,
-                'media_provider'        => 'pexels_first',
+                'openai_model'        => self::DEFAULT_MODEL,
+                'content_daily_limit' => self::DEFAULT_DAILY_LIMIT,
+                'monthly_budget_usd'  => self::DEFAULT_MONTHLY_BUDGET,
+                'budget_warning_pct'  => 80,
+                'media_provider'      => 'pexels_first',
             )
         );
     }
@@ -48,8 +50,8 @@ class Sektorel_Core_Settings {
 
         $models = array_keys( self::model_catalog() );
         $model = isset( $input['openai_model'] ) ? sanitize_text_field( wp_unslash( $input['openai_model'] ) ) : $current['openai_model'];
-        if ( $model && ! in_array( $model, $models, true ) ) {
-            $model = $current['openai_model'];
+        if ( ! in_array( $model, $models, true ) ) {
+            $model = in_array( $current['openai_model'], $models, true ) ? $current['openai_model'] : self::DEFAULT_MODEL;
         }
 
         $daily = isset( $input['content_daily_limit'] ) ? absint( $input['content_daily_limit'] ) : (int) $current['content_daily_limit'];
@@ -79,6 +81,34 @@ class Sektorel_Core_Settings {
         );
     }
 
+    /**
+     * Migrate the old wp-config runtime constants once as initial panel values.
+     * The constants are intentionally ignored afterwards, so they can remain in
+     * wp-config.php without locking or overriding the admin panel.
+     */
+    private static function migrate_legacy_runtime_settings() {
+        $saved = get_option( self::OPTION, array() );
+        $saved = is_array( $saved ) ? $saved : array();
+        $changed = false;
+        $catalog = self::model_catalog();
+
+        if ( empty( $saved['openai_model'] ) ) {
+            $legacy_model = defined( 'SEKTOREL_OPENAI_MODEL' ) ? trim( (string) SEKTOREL_OPENAI_MODEL ) : '';
+            $saved['openai_model'] = isset( $catalog[ $legacy_model ] ) ? $legacy_model : self::DEFAULT_MODEL;
+            $changed = true;
+        }
+
+        if ( ! isset( $saved['content_daily_limit'] ) ) {
+            $legacy_limit = defined( 'SEKTOREL_CONTENT_AI_DAILY_LIMIT' ) ? absint( SEKTOREL_CONTENT_AI_DAILY_LIMIT ) : self::DEFAULT_DAILY_LIMIT;
+            $saved['content_daily_limit'] = max( 1, min( 200, $legacy_limit ) );
+            $changed = true;
+        }
+
+        if ( $changed ) {
+            update_option( self::OPTION, $saved, false );
+        }
+    }
+
     public static function update_secret( $key, $plain_value, $clear = false ) {
         $allowed = array( 'openai_api_key', 'pexels_api_key', 'unsplash_access_key', 'unsplash_secret_key' );
         if ( ! in_array( $key, $allowed, true ) ) {
@@ -96,7 +126,7 @@ class Sektorel_Core_Settings {
 
         $plain_value = trim( (string) $plain_value );
         if ( '' === $plain_value ) {
-            return true; // Blank fields preserve the existing secret.
+            return true;
         }
 
         $encrypted = self::encrypt( $plain_value );
@@ -111,10 +141,10 @@ class Sektorel_Core_Settings {
 
     public static function secret( $key ) {
         $constant_map = array(
-            'openai_api_key'       => 'SEKTOREL_OPENAI_API_KEY',
-            'pexels_api_key'       => 'SEKTOREL_PEXELS_API_KEY',
-            'unsplash_access_key'  => 'SEKTOREL_UNSPLASH_ACCESS_KEY',
-            'unsplash_secret_key'  => 'SEKTOREL_UNSPLASH_SECRET_KEY',
+            'openai_api_key'      => 'SEKTOREL_OPENAI_API_KEY',
+            'pexels_api_key'      => 'SEKTOREL_PEXELS_API_KEY',
+            'unsplash_access_key' => 'SEKTOREL_UNSPLASH_ACCESS_KEY',
+            'unsplash_secret_key' => 'SEKTOREL_UNSPLASH_SECRET_KEY',
         );
 
         if ( ! empty( $constant_map[ $key ] ) && defined( $constant_map[ $key ] ) ) {
@@ -133,31 +163,29 @@ class Sektorel_Core_Settings {
 
     public static function secret_source( $key ) {
         $constant_map = array(
-            'openai_api_key'       => 'SEKTOREL_OPENAI_API_KEY',
-            'pexels_api_key'       => 'SEKTOREL_PEXELS_API_KEY',
-            'unsplash_access_key'  => 'SEKTOREL_UNSPLASH_ACCESS_KEY',
-            'unsplash_secret_key'  => 'SEKTOREL_UNSPLASH_SECRET_KEY',
+            'openai_api_key'      => 'SEKTOREL_OPENAI_API_KEY',
+            'pexels_api_key'      => 'SEKTOREL_PEXELS_API_KEY',
+            'unsplash_access_key' => 'SEKTOREL_UNSPLASH_ACCESS_KEY',
+            'unsplash_secret_key' => 'SEKTOREL_UNSPLASH_SECRET_KEY',
         );
+
         if ( ! empty( $constant_map[ $key ] ) && defined( $constant_map[ $key ] ) && '' !== trim( (string) constant( $constant_map[ $key ] ) ) ) {
             return 'wp-config';
         }
+
         return self::secret( $key ) ? 'panel' : 'missing';
     }
 
     public static function effective_model() {
-        if ( defined( 'SEKTOREL_OPENAI_MODEL' ) && '' !== trim( (string) SEKTOREL_OPENAI_MODEL ) ) {
-            return trim( (string) SEKTOREL_OPENAI_MODEL );
-        }
         $settings = self::settings();
-        return ! empty( $settings['openai_model'] ) ? $settings['openai_model'] : 'gpt-5-mini';
+        $model = sanitize_text_field( $settings['openai_model'] ?? '' );
+        $catalog = self::model_catalog();
+        return isset( $catalog[ $model ] ) ? $model : self::DEFAULT_MODEL;
     }
 
     public static function effective_daily_limit() {
-        if ( defined( 'SEKTOREL_CONTENT_AI_DAILY_LIMIT' ) ) {
-            return max( 1, min( 200, absint( SEKTOREL_CONTENT_AI_DAILY_LIMIT ) ) );
-        }
         $settings = self::settings();
-        return max( 1, min( 200, absint( $settings['content_daily_limit'] ) ) );
+        return max( 1, min( 200, absint( $settings['content_daily_limit'] ?? self::DEFAULT_DAILY_LIMIT ) ) );
     }
 
     public static function monthly_budget() {
@@ -168,36 +196,36 @@ class Sektorel_Core_Settings {
     public static function model_catalog() {
         return array(
             'gpt-5.6-sol' => array(
-                'label'        => 'GPT-5.6 Sol',
-                'input'        => 4.00,
-                'output'       => 20.00,
-                'tier'         => 'En yüksek kalite',
-                'recommended'  => false,
-                'description'  => 'Karmaşık analiz, kritik editoryal kalite ve zor içerikler için.',
+                'label'       => 'GPT-5.6 Sol',
+                'input'       => 4.00,
+                'output'      => 20.00,
+                'tier'        => 'En yüksek kalite',
+                'recommended' => false,
+                'description' => 'Karmaşık analiz, kritik editoryal kalite ve zor içerikler için.',
             ),
             'gpt-5.6-terra' => array(
-                'label'        => 'GPT-5.6 Terra',
-                'input'        => 2.00,
-                'output'       => 12.00,
-                'tier'         => 'Kalite / maliyet dengesi',
-                'recommended'  => true,
-                'description'  => 'Yeni üretim iş yükleri için güçlü kalite ve kontrollü maliyet dengesi.',
+                'label'       => 'GPT-5.6 Terra',
+                'input'       => 2.00,
+                'output'      => 12.00,
+                'tier'        => 'Kalite / maliyet dengesi',
+                'recommended' => true,
+                'description' => 'Günlük editoryal üretim için önerilen kalite ve maliyet dengesi.',
             ),
             'gpt-5.6-luna' => array(
-                'label'        => 'GPT-5.6 Luna',
-                'input'        => 0.20,
-                'output'       => 1.20,
-                'tier'         => 'Yüksek hacim',
-                'recommended'  => false,
-                'description'  => 'Yüksek hacimli, iyi yapılandırılmış ve maliyet hassas akışlar için.',
+                'label'       => 'GPT-5.6 Luna',
+                'input'       => 0.20,
+                'output'      => 1.20,
+                'tier'        => 'Yüksek hacim',
+                'recommended' => false,
+                'description' => 'Yüksek hacimli, iyi yapılandırılmış ve maliyet hassas akışlar için.',
             ),
             'gpt-5-mini' => array(
-                'label'        => 'GPT-5 Mini',
-                'input'        => 0.25,
-                'output'       => 2.00,
-                'tier'         => 'Mevcut / ekonomik',
-                'recommended'  => false,
-                'description'  => 'Mevcut pipeline ile uyumlu, düşük maliyetli ve iyi tanımlı işler için.',
+                'label'       => 'GPT-5 Mini',
+                'input'       => 0.25,
+                'output'      => 2.00,
+                'tier'        => 'Legacy / ekonomik',
+                'recommended' => false,
+                'description' => 'Mevcut kurulumdan taşınan eski ekonomik model seçeneği.',
             ),
         );
     }
@@ -207,8 +235,10 @@ class Sektorel_Core_Settings {
         if ( empty( $catalog[ $model ] ) ) {
             return 0.0;
         }
+
         $input_tokens = max( 0, (int) $input_tokens );
         $output_tokens = max( 0, (int) $output_tokens );
+
         return round(
             ( $input_tokens / 1000000 ) * (float) $catalog[ $model ]['input'] +
             ( $output_tokens / 1000000 ) * (float) $catalog[ $model ]['output'],
@@ -218,17 +248,14 @@ class Sektorel_Core_Settings {
 
     public static function usage_summary( $period = 'month' ) {
         global $wpdb;
+
         if ( ! class_exists( 'Sektorel_Content_Candidates' ) || ! Sektorel_Content_Candidates::maybe_install() ) {
             return array( 'requests' => 0, 'input_tokens' => 0, 'output_tokens' => 0, 'cost' => 0.0 );
         }
 
         $table = Sektorel_Content_Candidates::table_name();
         $now = current_time( 'timestamp', true );
-        if ( 'day' === $period ) {
-            $from = gmdate( 'Y-m-d 00:00:00', $now );
-        } else {
-            $from = gmdate( 'Y-m-01 00:00:00', $now );
-        }
+        $from = 'day' === $period ? gmdate( 'Y-m-d 00:00:00', $now ) : gmdate( 'Y-m-01 00:00:00', $now );
 
         $rows = $wpdb->get_results(
             $wpdb->prepare(
@@ -251,6 +278,7 @@ class Sektorel_Core_Settings {
                 absint( $row['ai_output_tokens'] ?? 0 )
             );
         }
+
         $summary['cost'] = round( $summary['cost'], 6 );
         return $summary;
     }
@@ -261,13 +289,14 @@ class Sektorel_Core_Settings {
         $spent = (float) $usage['cost'];
         $pct = $budget > 0 ? min( 999, ( $spent / $budget ) * 100 ) : 0;
         $settings = self::settings();
+
         return array(
-            'budget' => $budget,
-            'spent' => $spent,
+            'budget'    => $budget,
+            'spent'     => $spent,
             'remaining' => $budget > 0 ? max( 0, $budget - $spent ) : 0,
-            'percent' => round( $pct, 1 ),
-            'warning' => $budget > 0 && $pct >= (float) $settings['budget_warning_pct'],
-            'blocked' => $budget > 0 && $spent >= $budget,
+            'percent'   => round( $pct, 1 ),
+            'warning'   => $budget > 0 && $pct >= (float) $settings['budget_warning_pct'],
+            'blocked'   => $budget > 0 && $spent >= $budget,
         );
     }
 
@@ -275,6 +304,7 @@ class Sektorel_Core_Settings {
         if ( ! current_user_can( 'manage_options' ) ) {
             return;
         }
+
         $budget = self::budget_status();
         if ( ! empty( $budget['blocked'] ) ) {
             wp_send_json_error(
@@ -290,33 +320,32 @@ class Sektorel_Core_Settings {
         }
     }
 
-    public static function define_runtime_constants() {
-        $settings = self::settings();
-
+    /**
+     * Only credentials become runtime constants. Model and limits deliberately
+     * remain WordPress options so the admin panel is authoritative.
+     */
+    public static function define_runtime_credentials() {
         if ( ! defined( 'SEKTOREL_OPENAI_API_KEY' ) ) {
             $value = self::secret( 'openai_api_key' );
             if ( $value ) {
                 define( 'SEKTOREL_OPENAI_API_KEY', $value );
             }
         }
-        if ( ! defined( 'SEKTOREL_OPENAI_MODEL' ) && ! empty( $settings['openai_model'] ) ) {
-            define( 'SEKTOREL_OPENAI_MODEL', $settings['openai_model'] );
-        }
-        if ( ! defined( 'SEKTOREL_CONTENT_AI_DAILY_LIMIT' ) ) {
-            define( 'SEKTOREL_CONTENT_AI_DAILY_LIMIT', self::effective_daily_limit() );
-        }
+
         if ( ! defined( 'SEKTOREL_PEXELS_API_KEY' ) ) {
             $value = self::secret( 'pexels_api_key' );
             if ( $value ) {
                 define( 'SEKTOREL_PEXELS_API_KEY', $value );
             }
         }
+
         if ( ! defined( 'SEKTOREL_UNSPLASH_ACCESS_KEY' ) ) {
             $value = self::secret( 'unsplash_access_key' );
             if ( $value ) {
                 define( 'SEKTOREL_UNSPLASH_ACCESS_KEY', $value );
             }
         }
+
         if ( ! defined( 'SEKTOREL_UNSPLASH_SECRET_KEY' ) ) {
             $value = self::secret( 'unsplash_secret_key' );
             if ( $value ) {
@@ -325,10 +354,16 @@ class Sektorel_Core_Settings {
         }
     }
 
+    /** Backward-compatible alias for any old internal caller. */
+    public static function define_runtime_constants() {
+        self::define_runtime_credentials();
+    }
+
     private static function encrypt( $plain ) {
         if ( ! function_exists( 'openssl_encrypt' ) ) {
             return new WP_Error( 'openssl_missing', 'OpenSSL bulunamadığı için API anahtarı güvenli biçimde kaydedilemedi.' );
         }
+
         try {
             $key = self::crypto_key();
             $iv = random_bytes( 16 );
@@ -336,11 +371,12 @@ class Sektorel_Core_Settings {
             if ( false === $cipher ) {
                 return new WP_Error( 'secret_encrypt_failed', 'API anahtarı şifrelenemedi.' );
             }
+
             $mac = hash_hmac( 'sha256', $iv . $cipher, $key, true );
             return base64_encode( wp_json_encode( array(
-                'iv' => base64_encode( $iv ),
+                'iv'     => base64_encode( $iv ),
                 'cipher' => base64_encode( $cipher ),
-                'mac' => base64_encode( $mac ),
+                'mac'    => base64_encode( $mac ),
             ) ) );
         } catch ( Exception $e ) {
             return new WP_Error( 'secret_encrypt_failed', $e->getMessage() );
@@ -351,22 +387,26 @@ class Sektorel_Core_Settings {
         if ( ! function_exists( 'openssl_decrypt' ) ) {
             return new WP_Error( 'openssl_missing', 'OpenSSL bulunamadı.' );
         }
+
         $json = base64_decode( (string) $encoded, true );
         $data = $json ? json_decode( $json, true ) : null;
         if ( ! is_array( $data ) || empty( $data['iv'] ) || empty( $data['cipher'] ) || empty( $data['mac'] ) ) {
             return new WP_Error( 'secret_format_invalid', 'Secret formatı geçersiz.' );
         }
+
         $iv = base64_decode( $data['iv'], true );
         $cipher = base64_decode( $data['cipher'], true );
         $mac = base64_decode( $data['mac'], true );
         if ( false === $iv || false === $cipher || false === $mac ) {
             return new WP_Error( 'secret_format_invalid', 'Secret çözümlenemedi.' );
         }
+
         $key = self::crypto_key();
         $expected = hash_hmac( 'sha256', $iv . $cipher, $key, true );
         if ( ! hash_equals( $expected, $mac ) ) {
             return new WP_Error( 'secret_tampered', 'Secret bütünlük kontrolünden geçemedi.' );
         }
+
         $plain = openssl_decrypt( $cipher, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv );
         return false === $plain ? new WP_Error( 'secret_decrypt_failed', 'Secret çözümlenemedi.' ) : $plain;
     }

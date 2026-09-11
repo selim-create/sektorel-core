@@ -21,7 +21,7 @@ class Sektorel_Event_AI_Assistant {
         $saved = get_post_meta( $post->ID, self::META_KEY, true );
         echo '<p class="description">AI yalnız inceleme önerisi üretir; Event alanlarını, matcher veya duplicate kararını değiştirmez.</p>';
         if ( ! $enabled ) {
-            echo '<p><strong>AI kapalı.</strong></p><p class="description">Etkinleştirmek için wp-config.php içinde <code>SEKTOREL_OPENAI_API_KEY</code> tanımlanabilir.</p>';
+            echo '<p><strong>AI kapalı.</strong></p><p class="description">Etkinleştirmek için Sektörel Core → AI & Maliyet ekranından OpenAI API anahtarı tanımlayın.</p>';
         } else {
             $nonce = wp_create_nonce( self::NONCE_ACTION );
             echo '<p><button type="button" class="button" id="sektorel-ai-suggest">AI önerisi üret</button></p><div id="sektorel-ai-status" class="description"></div>';
@@ -88,5 +88,5 @@ class Sektorel_Event_AI_Assistant {
 
     private static function excerpt($v,$limit){$v=trim(preg_replace('/\s+/u',' ',wp_strip_all_tags((string)$v)));return function_exists('mb_substr')?mb_substr($v,0,$limit,'UTF-8'):substr($v,0,$limit);}
     private static function api_key(){return defined('SEKTOREL_OPENAI_API_KEY')?trim((string)SEKTOREL_OPENAI_API_KEY):'';}
-    private static function model(){return defined('SEKTOREL_OPENAI_MODEL')&&trim((string)SEKTOREL_OPENAI_MODEL)!==''?trim((string)SEKTOREL_OPENAI_MODEL):'gpt-5-mini';}
+    private static function model(){return class_exists('Sektorel_Core_Settings')?Sektorel_Core_Settings::effective_model():'gpt-5-mini';}
 }

@@ -328,11 +328,11 @@ class Sektorel_Content_AI_Draft_Processor {
         $candidate = Sektorel_Content_Candidates::get( $candidate_id );
         $evidence = self::decode_json_array( $candidate['evidence_json'] ?? '' );
         $evidence['ai_draft'] = array(
-            'status'      => 'created',
-            'mode'        => sanitize_key( $mode ),
-            'post_id'     => absint( $post_id ),
-            'model'       => self::model(),
-            'created_at'  => gmdate( 'c' ),
+            'status'        => 'created',
+            'mode'          => sanitize_key( $mode ),
+            'post_id'       => absint( $post_id ),
+            'model'         => self::model(),
+            'created_at'    => gmdate( 'c' ),
             'input_tokens'  => absint( $usage['input_tokens'] ?? 0 ),
             'output_tokens' => absint( $usage['output_tokens'] ?? 0 ),
         );
@@ -343,17 +343,17 @@ class Sektorel_Content_AI_Draft_Processor {
         $wpdb->update(
             Sektorel_Content_Candidates::table_name(),
             array(
-                'status'          => Sektorel_Content_Candidates::STATUS_PROCESSED,
-                'ai_status'       => 'done',
-                'ai_model'        => self::model(),
-                'ai_input_tokens' => absint( $usage['input_tokens'] ?? 0 ),
-                'ai_output_tokens'=> absint( $usage['output_tokens'] ?? 0 ),
-                'draft_post_id'   => absint( $post_id ),
-                'evidence_json'   => wp_json_encode( $evidence, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ),
-                'error_code'      => '',
-                'error_message'   => '',
-                'processed_at'    => current_time( 'mysql', true ),
-                'updated_at'      => current_time( 'mysql', true ),
+                'status'           => Sektorel_Content_Candidates::STATUS_PROCESSED,
+                'ai_status'        => 'done',
+                'ai_model'         => self::model(),
+                'ai_input_tokens'  => absint( $usage['input_tokens'] ?? 0 ),
+                'ai_output_tokens' => absint( $usage['output_tokens'] ?? 0 ),
+                'draft_post_id'    => absint( $post_id ),
+                'evidence_json'    => wp_json_encode( $evidence, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ),
+                'error_code'       => '',
+                'error_message'    => '',
+                'processed_at'     => current_time( 'mysql', true ),
+                'updated_at'       => current_time( 'mysql', true ),
             ),
             array( 'id' => absint( $candidate_id ) ),
             array( '%s', '%s', '%s', '%d', '%d', '%d', '%s', '%s', '%s', '%s', '%s' ),
@@ -419,8 +419,9 @@ class Sektorel_Content_AI_Draft_Processor {
     }
 
     private static function daily_limit() {
-        $limit = defined( 'SEKTOREL_CONTENT_AI_DAILY_LIMIT' ) ? absint( SEKTOREL_CONTENT_AI_DAILY_LIMIT ) : self::DAILY_LIMIT_DEFAULT;
-        return max( 1, min( 200, $limit ) );
+        return class_exists( 'Sektorel_Core_Settings' )
+            ? Sektorel_Core_Settings::effective_daily_limit()
+            : self::DAILY_LIMIT_DEFAULT;
     }
 
     private static function api_key() {
@@ -428,8 +429,8 @@ class Sektorel_Content_AI_Draft_Processor {
     }
 
     private static function model() {
-        return defined( 'SEKTOREL_OPENAI_MODEL' ) && '' !== trim( (string) SEKTOREL_OPENAI_MODEL )
-            ? trim( (string) SEKTOREL_OPENAI_MODEL )
+        return class_exists( 'Sektorel_Core_Settings' )
+            ? Sektorel_Core_Settings::effective_model()
             : 'gpt-5-mini';
     }
 

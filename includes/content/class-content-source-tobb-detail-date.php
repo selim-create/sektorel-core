@@ -40,9 +40,38 @@ class Sektorel_Content_Source_TOBB_Detail_Date {
         Sektorel_Content_AI_Draft_Admin::init();
         Sektorel_Core_Console::init();
 
+        // Core 1.69.0 rendered model/limit inputs as disabled whenever the
+        // legacy constants existed. As of 1.69.2 these are panel-managed
+        // operational settings; legacy constants are migration seed values,
+        // not locks. Keep old wp-config lines harmless and make the UI editable.
+        add_action( 'admin_footer', array( __CLASS__, 'unlock_panel_runtime_controls' ), 99 );
+
         add_action( 'wp_ajax_sektorel_content_prepare_scans', array( __CLASS__, 'normalize_source_configuration' ), 1 );
         add_action( 'wp_ajax_sektorel_content_scan_batch', array( __CLASS__, 'normalize_source_configuration' ), 1 );
         add_action( 'admin_post_sektorel_content_scan_source', array( __CLASS__, 'normalize_source_configuration' ), 1 );
+    }
+
+    public static function unlock_panel_runtime_controls() {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            return;
+        }
+        $page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+        if ( 'sektorel-core-settings' !== $page ) {
+            return;
+        }
+        ?>
+        <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            document.querySelectorAll('input[name="openai_model"], input[name="content_daily_limit"]').forEach(function (el) {
+                el.disabled = false;
+                el.removeAttribute('disabled');
+            });
+            document.querySelectorAll('.sc-lock').forEach(function (el) {
+                el.innerHTML = 'Model ve günlük limit <strong>Sektörel Core panelinden</strong> yönetilir. Eski wp-config sabitleri kilit oluşturmaz.';
+            });
+        });
+        </script>
+        <?php
     }
 
     public static function normalize_source_configuration() {
