@@ -5,17 +5,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 require_once __DIR__ . '/class-content-source-tobb-candidate-identity.php';
+require_once __DIR__ . '/class-content-source-tobb-latest-date.php';
 require_once __DIR__ . '/class-content-source-tobb-archive-date.php';
 
 /**
  * Backward-compatible TOBB date enrichment facade.
  *
- * Triage still calls this class, but date resolution now comes from TOBB
- * archive pages rather than one detail-page HTTP request per candidate.
+ * Triage calls this class, but publication dates are resolved from TOBB's
+ * archive surfaces rather than one detail-page HTTP request per candidate.
  */
 class Sektorel_Content_Source_TOBB_Detail_Date {
 
-    const CACHE_VERSION = '5';
+    const CACHE_VERSION = '6';
     const CANONICAL_BASE_URL = 'https://www.tobb.org.tr/Sayfalar/';
 
     public static function init() {
@@ -85,7 +86,15 @@ class Sektorel_Content_Source_TOBB_Detail_Date {
         // Preserve deterministic candidate identity/canonical URL repair first.
         $row = Sektorel_Content_Source_TOBB_Candidate_Identity::repair_candidate( $row );
 
-        // Publication date comes from the cached archive map, not detail pages.
+        // TOBB's bare archive URL exposes the newest records and is not
+        // equivalent to the offset-based `s=0` archive view.
+        $row = Sektorel_Content_Source_TOBB_Latest_Date::enrich_candidate_for_triage( $row );
+        if ( ! empty( $row['published_at'] ) ) {
+            return $row;
+        }
+
+        // Existing paginated archive resolver remains the fallback for older
+        // records so the already-working history coverage is preserved.
         return Sektorel_Content_Source_TOBB_Archive_Date::enrich_candidate_for_triage( $row );
     }
 }
