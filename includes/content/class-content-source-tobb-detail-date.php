@@ -29,7 +29,12 @@ class Sektorel_Content_Source_TOBB_Detail_Date {
             return;
         }
 
-        Sektorel_Core_Settings::init();
+        // wp_salt() is a pluggable function and is not guaranteed to exist
+        // while active plugin files are still being included. The settings
+        // service decrypts panel-stored credentials, so bootstrap it only
+        // after WordPress has loaded pluggable.php and fired plugins_loaded.
+        add_action( 'plugins_loaded', array( 'Sektorel_Core_Settings', 'init' ), 1 );
+
         Sektorel_Content_Source_TOBB_Candidate_Identity::init();
         Sektorel_Content_AI_Draft_Processor::init();
         Sektorel_Content_AI_Draft_Admin::init();
