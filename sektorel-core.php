@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Sektorel Core
  * Description: Sektörel Ajanda projesi için CPT, Taxonomy ve API tanımlarını içeren çekirdek eklenti.
- * Version: 1.61.0
+ * Version: 1.62.0
  * Author: Sektörel Ajanda Dev Team
  * Text Domain: sektorel-core
  */
@@ -39,6 +39,7 @@ class Sektorel_Core {
         Sektorel_Company_Media::init();
         Sektorel_Company_Ranking::init();
         Sektorel_Company_Candidates::init();
+        Sektorel_Content_Candidates::init();
         Sektorel_Job_Application_Files::init();
         Sektorel_Job_Application_Access_Fix::init();
         Sektorel_Mail_Observability::init();
@@ -53,6 +54,8 @@ class Sektorel_Core {
             Sektorel_Company_Importer::init();
             Sektorel_Company_Importer_Shared_Matcher::init();
             Sektorel_Company_Candidates_Admin::init();
+            Sektorel_Content_Source_Admin::init();
+            Sektorel_Content_Source_Center::init();
             Sektorel_Event_Source_Admin::init();
             Sektorel_Event_Source_Role::init();
             Sektorel_Event_Source_TOBB::init();
@@ -124,6 +127,7 @@ class Sektorel_Core {
         require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-event-reminder.php';
         require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-event-source.php';
         require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-event-candidate.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-content-source.php';
         require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-career.php';
         require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-offer.php';
         require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-job-application.php';
@@ -141,11 +145,14 @@ class Sektorel_Core {
         require_once SEKTOREL_CORE_PATH . 'includes/fields/location-fields.php';
         require_once SEKTOREL_CORE_PATH . 'includes/fields/seo-fields.php';
         require_once SEKTOREL_CORE_PATH . 'includes/content/class-content-category-foundation.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/content/class-content-candidates.php';
         require_once SEKTOREL_CORE_PATH . 'includes/headless/class-headless-routing.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-demo-importer.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-company-importer.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-company-importer-shared-matcher.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-company-candidates-admin.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-content-source-admin.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-content-source-center.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-admin.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-role.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-tobb.php';
@@ -223,6 +230,7 @@ class Sektorel_Core {
         Sektorel_Event_Reminder_CPT::register();
         Sektorel_Event_Source_CPT::register();
         Sektorel_Event_Candidate_CPT::register();
+        Sektorel_Content_Source_CPT::register();
         Sektorel_Career_CPT::register();
         Sektorel_Offer_CPT::register();
         Sektorel_Job_Application_CPT::register();
