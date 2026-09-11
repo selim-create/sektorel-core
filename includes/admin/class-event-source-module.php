@@ -9,13 +9,17 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * Provider classes own parser/import behavior only. Pipeline stage metadata,
  * callbacks, order and nonce actions are owned centrally by Stage Registry.
+ *
+ * This module is intentionally lazy. It is operational/admin infrastructure
+ * and must not load on ordinary REST/GraphQL/frontend requests or unrelated
+ * wp-admin screens.
  */
 class Sektorel_Event_Source_Module {
 
     private static $initialized = false;
 
     public static function init() {
-        if ( self::$initialized ) {
+        if ( self::$initialized || ! self::should_boot() ) {
             return;
         }
 
@@ -194,6 +198,45 @@ class Sektorel_Event_Source_Module {
 
         require_once __DIR__ . '/class-event-pipeline-reporting-detail.php';
         Sektorel_Event_Pipeline_Reporting_Detail::init();
+    }
+
+    private static function should_boot() {
+        if ( function_exists( 'wp_doing_cron' ) && wp_doing_cron() ) {
+            return true;
+        }
+
+        if ( defined( 'WP_CLI' ) && WP_CLI ) {
+            return true;
+        }
+
+        if ( ! is_admin() ) {
+            return false;
+        }
+
+        if ( function_exists( 'wp_doing_ajax' ) && wp_doing_ajax() ) {
+            $action = isset( $_REQUEST['action'] ) ? sanitize_key( wp_unslash( $_REQUEST['action'] ) ) : '';
+            return 0 === strpos( $action, 'sektorel_' );
+        }
+
+        $post_type = isset( $_GET['post_type'] ) ? sanitize_key( wp_unslash( $_GET['post_type'] ) ) : '';
+        if ( in_array( $post_type, array( 'event', 'event_source', 'event_candidate' ), true ) ) {
+            return true;
+        }
+
+        $post_id = isset( $_GET['post'] ) ? absint( $_GET['post'] ) : 0;
+        if ( $post_id && 'event' === get_post_type( $post_id ) ) {
+            return true;
+        }
+
+        $page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+        return in_array(
+            $page,
+            array(
+                'sektorel-source-center',
+                'sektorel-event-source-center',
+            ),
+            true
+        );
     }
 
     public static function official_calendar_payload() {
