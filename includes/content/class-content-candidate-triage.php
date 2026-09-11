@@ -6,15 +6,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /**
  * Deterministic pre-AI triage for content candidates.
- *
- * This class never calls AI and never creates posts. It only promotes NEW
- * candidates to READY or REVIEW with explicit evidence explaining why.
+ * Never calls AI and never creates posts.
  */
 class Sektorel_Content_Candidate_Triage {
 
     const NONCE_ACTION = 'sektorel_content_candidate_triage';
     const BATCH_SIZE = 25;
     const DEFAULT_FRESHNESS_DAYS = 45;
+    const TRIAGE_VERSION = 2;
+    const RUN_TTL = 30 * MINUTE_IN_SECONDS;
 
     public static function init() {
         if ( ! is_admin() ) {
@@ -35,7 +35,38 @@ class Sektorel_Content_Candidate_Triage {
         }
 
         global $wpdb;
-        $table = Sektorel_Content_Candidates::table_name();
+        $table   = Sektorel_Content_Candidates::table_name();
+        $run_key = self::run_key( get_current_user_id() );
+        $active  = get_transient( $run_key );
+
+        if ( ! $active ) {
+            $new_count = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$table} WHERE status = %s",
+                Sektorel_Content_Candidates::STATUS_NEW
+            ) );
+
+            if ( 0 === $new_count ) {
+                $review_count = (int) $wpdb->get_var( $wpdb->prepare(
+                    "SELECT COUNT(*) FROM {$table} WHERE status = %s",
+                    Sektorel_Content_Candidates::STATUS_REVIEW
+                ) );
+
+                if ( $review_count > 0 ) {
+                    $wpdb->update(
+                        $table,
+                        array(
+                            'status'     => Sektorel_Content_Candidates::STATUS_NEW,
+                            'updated_at' => current_time( 'mysql', true ),
+                        ),
+                        array( 'status' => Sektorel_Content_Candidates::STATUS_REVIEW ),
+                        array( '%s', '%s' ),
+                        array( '%s' )
+                    );
+                }
+            }
+
+            set_transient( $run_key, array( 'started_at' => time() ), self::RUN_TTL );
+        }
 
         $rows = $wpdb->get_results(
             $wpdb->prepare(
@@ -47,12 +78,13 @@ class Sektorel_Content_Candidate_Triage {
         );
 
         if ( ! $rows ) {
+            delete_transient( $run_key );
             wp_send_json_success( array(
                 'processed' => 0,
                 'ready'     => 0,
                 'review'    => 0,
                 'done'      => true,
-                'messages'  => array( 'Değerlendirilecek yeni candidate kalmadı.' ),
+                'messages'  => array( 'Değerlendirilecek candidate kalmadı.' ),
             ) );
         }
 
@@ -62,7 +94,7 @@ class Sektorel_Content_Candidate_Triage {
 
         foreach ( $rows as $row ) {
             $result = self::evaluate( $row );
-            $saved = self::persist( (int) $row['id'], $row, $result );
+            $saved  = self::persist( (int) $row['id'], $row, $result );
 
             if ( is_wp_error( $saved ) ) {
                 $review++;
@@ -85,12 +117,16 @@ class Sektorel_Content_Candidate_Triage {
             );
         }
 
-        $remaining = (int) $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT COUNT(*) FROM {$table} WHERE status = %s",
-                Sektorel_Content_Candidates::STATUS_NEW
-            )
-        );
+        $remaining = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$table} WHERE status = %s",
+            Sektorel_Content_Candidates::STATUS_NEW
+        ) );
+
+        if ( 0 === $remaining ) {
+            delete_transient( $run_key );
+        } else {
+            set_transient( $run_key, array( 'started_at' => time() ), self::RUN_TTL );
+        }
 
         wp_send_json_success( array(
             'processed' => count( $rows ),
@@ -104,15 +140,15 @@ class Sektorel_Content_Candidate_Triage {
 
     public static function evaluate( $candidate ) {
         $candidate = is_array( $candidate ) ? $candidate : array();
-        $title = trim( (string) ( $candidate['title'] ?? '' ) );
-        $url = trim( (string) ( $candidate['canonical_url'] ?? $candidate['source_url'] ?? '' ) );
-        $summary = trim( (string) ( $candidate['extracted_text'] ?? '' ) );
+        $title        = trim( (string) ( $candidate['title'] ?? '' ) );
+        $url          = trim( (string) ( $candidate['canonical_url'] ?? $candidate['source_url'] ?? '' ) );
+        $summary      = trim( (string) ( $candidate['extracted_text'] ?? '' ) );
         $published_at = trim( (string) ( $candidate['published_at'] ?? '' ) );
-        $source_id = absint( $candidate['source_id'] ?? 0 );
+        $source_id    = absint( $candidate['source_id'] ?? 0 );
 
-        $freshness_days = self::source_freshness_days( $source_id );
-        $age_days = self::age_days( $published_at );
-        $source_categories = self::source_categories( $source_id, $candidate );
+        $freshness_days       = self::source_freshness_days( $source_id );
+        $age_days             = self::age_days( $published_at );
+        $source_categories    = self::source_categories( $source_id, $candidate );
         $suggested_categories = self::suggest_categories( $title . ' ' . $summary, $source_categories );
 
         $blocking = array();
@@ -167,7 +203,7 @@ class Sektorel_Content_Candidate_Triage {
             'freshness_days'       => $freshness_days,
             'suggested_categories' => $suggested_categories,
             'triaged_at'           => gmdate( 'c' ),
-            'version'              => 1,
+            'version'              => self::TRIAGE_VERSION,
         );
     }
 
@@ -308,5 +344,9 @@ class Sektorel_Content_Candidate_Triage {
     private static function short_title( $title ) {
         $title = trim( (string) $title );
         return mb_strlen( $title ) > 70 ? mb_substr( $title, 0, 67 ) . '...' : $title;
+    }
+
+    private static function run_key( $user_id ) {
+        return 'sektorel_content_triage_run_' . absint( $user_id );
     }
 }
