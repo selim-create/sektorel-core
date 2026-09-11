@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Sektorel Core
  * Description: Sektörel Ajanda projesi için CPT, Taxonomy ve API tanımlarını içeren çekirdek eklenti.
- * Version: 1.69.3
+ * Version: 1.69.4
  * Author: Sektörel Ajanda Dev Team
  * Text Domain: sektorel-core
  */
@@ -13,14 +13,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'SEKTOREL_CORE_PATH', plugin_dir_path( __FILE__ ) );
 define( 'SEKTOREL_CORE_URL', plugin_dir_url( __FILE__ ) );
-
-if ( is_admin() ) {
-    require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-psb-anatolia.php';
-    Sektorel_Event_Source_PSB_Anatolia::init();
-
-    require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-lifecycle-repair.php';
-    Sektorel_Event_Source_Lifecycle_Repair::init();
-}
 
 class Sektorel_Core {
     private static $instance = null;
@@ -34,6 +26,7 @@ class Sektorel_Core {
 
     public function __construct() {
         $this->includes();
+
         Sektorel_Event_Source_Module::init();
         Sektorel_Token_Service::init();
         Sektorel_Company_Media::init();
@@ -47,65 +40,15 @@ class Sektorel_Core {
         Sektorel_Event_Reminders::init();
         Sektorel_Headless_Routing::init();
         Sektorel_Content_Category_Foundation::init();
+
         add_action( 'init', array( $this, 'register_post_types' ) );
         add_action( 'init', array( $this, 'register_taxonomies' ) );
         add_action( 'init', array( $this, 'init_fields' ) );
+
         if ( is_admin() ) {
-            Sektorel_Demo_Importer::init();
-            Sektorel_Company_Importer::init();
-            Sektorel_Company_Importer_Shared_Matcher::init();
-            Sektorel_Company_Candidates_Admin::init();
-            Sektorel_Content_Source_Admin::init();
-            Sektorel_Content_Source_Center::init();
-            Sektorel_Content_Source_Scanner::init();
-            Sektorel_Content_Candidate_Triage::init();
-            Sektorel_Content_Source_TOBB_Detail_Date::init();
-            Sektorel_Event_Source_Admin::init();
-            Sektorel_Event_Source_Role::init();
-            Sektorel_Event_Source_TOBB::init();
-            Sektorel_Event_Source_TOBB_Taxonomy::init();
-            remove_action( 'admin_menu', array( 'Sektorel_Event_Source_TOBB_Taxonomy', 'add_admin_menu' ), 46 );
-            Sektorel_Event_Source_TOBB_Taxonomy_UI::init();
-            Sektorel_Event_Source_TOBB_Location_Resolver::init();
-            Sektorel_Event_Source_Center::init();
-            Sektorel_Event_Source_Importer_Fixed::init();
-            Sektorel_Event_Source_Import_Header_Fix::init();
-            Sektorel_Event_Source_URL_Normalizer::init();
-            Sektorel_Event_Source_Checker::init();
-            Sektorel_Event_Source_Single_Check_Notice::init();
-            Sektorel_Event_Source_Health::init();
-            Sektorel_Event_Source_Target_Discovery::init();
-            Sektorel_Event_Source_Target_Safety::init();
-            Sektorel_Event_Candidate_JSONLD::init();
-            Sektorel_Event_Candidate_Confidence::init();
-            Sektorel_Event_HTML_Safe_Queue::init();
-            Sektorel_Event_Candidate_Filter_Safety::init();
-            Sektorel_Event_Candidate_HTML_Container_Filter::init();
-            Sektorel_Event_Candidate_HTML_Stale_Filter::init();
-            Sektorel_Event_Candidate_HTML_Time_Proximity::init();
-            Sektorel_Event_Candidate_HTML::init();
-            Sektorel_Event_HTML_Scan_Observability::init();
-            Sektorel_Event_HTML_New_Candidate_Panel::init();
-            Sektorel_Event_HTML_Final_Guard::init();
-            Sektorel_Event_HTML_Unresolved_Review::init();
-            Sektorel_Event_HTML_Review_Hygiene::init();
-            Sektorel_Event_HTML_Review_Safety::init();
-            Sektorel_Event_HTML_Review_Triage::init();
-            Sektorel_Event_HTML_Safe_Convert::init();
-            Sektorel_Event_Taxonomy_Selector::init();
-            Sektorel_Event_Taxonomy_Metabox_Hotfix::init();
-            Sektorel_Event_Candidate_Post_Hardening::init();
-            Sektorel_Event_Candidate_Listing_Guard::init();
-            Sektorel_Event_Candidate_Retro_Cleanup::init();
-            Sektorel_Event_Title_Casing_Fix::init();
-            Sektorel_Event_Candidate_URL_Fix::init();
-            Sektorel_Event_Candidate_Quality::init();
-            Sektorel_Event_Candidate_Matcher::init();
-            Sektorel_Event_Source_Evidence::init();
-            Sektorel_Event_Candidate_State_Guard::init();
-            Sektorel_Event_Content_Quality::init();
-            Sektorel_Event_Candidate_Field_Quality::init();
+            $this->bootstrap_admin();
         }
+
         Sektorel_Company_Mutations::init();
         Sektorel_Company_Profile::init();
         Sektorel_Company_Settings::init();
@@ -124,111 +67,270 @@ class Sektorel_Core {
         add_action( 'graphql_register_types', array( $this, 'register_graphql_types' ) );
     }
 
-    private function includes() {
-        require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-company.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-lead.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-event.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-event-reminder.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-event-source.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-event-candidate.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-content-source.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-career.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-offer.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/post-types/class-job-application.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/taxonomies/class-sector.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/taxonomies/class-location.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/company/class-company-ranking.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/company/class-company-matcher.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/company/class-company-candidates.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/company/class-company-candidate-lifecycle.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/fields/company-fields.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/fields/lead-fields.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/fields/event-fields.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/fields/sector-fields.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/fields/career-fields.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/fields/location-fields.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/fields/seo-fields.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/content/class-content-category-foundation.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/content/class-content-candidates.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/content/class-content-source-scanner.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/content/class-content-candidate-triage.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/content/class-content-source-tobb-detail-date.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/headless/class-headless-routing.php';
+    /**
+     * Keep the ordinary authenticated Dashboard lightweight.
+     *
+     * Before 1.69.4 every wp-admin request initialized the complete company,
+     * content and event operations tree. Login itself was fast, but the first
+     * authenticated /wp-admin/ request could stall while dozens of unrelated
+     * scanners, matchers, importers and review tools attached hooks.
+     *
+     * Core Console remains available on every admin request so navigation is
+     * stable. Operational groups are initialized only for their own screens or
+     * Sektorel AJAX/admin-post actions.
+     */
+    private function bootstrap_admin() {
+        require_once SEKTOREL_CORE_PATH . 'includes/core/class-core-settings.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-core-console.php';
+
+        add_action( 'plugins_loaded', array( 'Sektorel_Core_Settings', 'init' ), 1 );
+        Sektorel_Core_Console::init();
+
+        $scope = $this->admin_request_scope();
+
+        if ( $scope['all'] || $scope['demo'] ) {
+            $this->bootstrap_demo_admin();
+        }
+        if ( $scope['all'] || $scope['company'] ) {
+            $this->bootstrap_company_admin();
+        }
+        if ( $scope['all'] || $scope['content'] ) {
+            $this->bootstrap_content_admin();
+        }
+        if ( $scope['all'] || $scope['event'] ) {
+            $this->bootstrap_event_admin();
+        }
+    }
+
+    private function admin_request_scope() {
+        $scope = array(
+            'all'     => false,
+            'demo'    => false,
+            'company' => false,
+            'content' => false,
+            'event'   => false,
+        );
+
+        $action = isset( $_REQUEST['action'] ) ? sanitize_key( wp_unslash( $_REQUEST['action'] ) ) : '';
+        if ( $action && 0 === strpos( $action, 'sektorel_' ) ) {
+            $scope['all'] = true;
+            return $scope;
+        }
+
+        $page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+        $post_type = isset( $_GET['post_type'] ) ? sanitize_key( wp_unslash( $_GET['post_type'] ) ) : '';
+
+        if ( ! $post_type && ! empty( $_GET['post'] ) ) {
+            $post_type = get_post_type( absint( $_GET['post'] ) );
+            $post_type = $post_type ? sanitize_key( $post_type ) : '';
+        }
+
+        $scope['demo'] = 'sektorel-demo-import' === $page;
+
+        $scope['company'] = 'company' === $post_type ||
+            ( $page && false !== strpos( $page, 'sektorel-company' ) );
+
+        $scope['content'] = 'content_source' === $post_type ||
+            'sektorel-content-source-center' === $page ||
+            ( $page && 0 === strpos( $page, 'sektorel-content-' ) );
+
+        $scope['event'] = in_array( $post_type, array( 'event', 'event_source', 'event_candidate' ), true ) ||
+            in_array( $page, array( 'sektorel-source-center', 'sektorel-event-source-center' ), true ) ||
+            ( $page && 0 === strpos( $page, 'sektorel-event-' ) );
+
+        return $scope;
+    }
+
+    private function bootstrap_demo_admin() {
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-demo-importer.php';
+        Sektorel_Demo_Importer::init();
+    }
+
+    private function bootstrap_company_admin() {
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-company-importer.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-company-importer-shared-matcher.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-company-candidates-admin.php';
+
+        Sektorel_Company_Importer::init();
+        Sektorel_Company_Importer_Shared_Matcher::init();
+        Sektorel_Company_Candidates_Admin::init();
+    }
+
+    private function bootstrap_content_admin() {
+        require_once SEKTOREL_CORE_PATH . 'includes/content/class-content-source-scanner.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/content/class-content-candidate-triage.php';
+        require_once SEKTOREL_CORE_PATH . 'includes/content/class-content-source-tobb-detail-date.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-content-source-admin.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-content-source-center.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-admin.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-role.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-tobb.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-tobb-taxonomy.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-tobb-taxonomy-ui.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-tobb-location-resolver.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-center.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-importer-fixed.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-import-header-fix.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-url-normalizer.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-checker.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-single-check-notice.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-module.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-health.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-target-discovery.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-target-safety.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-jsonld.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-confidence.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-html-safe-queue.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-filter-safety.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-html-container-filter.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-html-stale-filter.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-html-time-proximity.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-html.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-html-scan-observability.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-html-new-candidate-panel.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-html-final-guard.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-html-unresolved-review.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-html-review-hygiene.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-html-review-safety.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-html-review-triage.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-html-safe-convert.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-taxonomy-selector.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-taxonomy-metabox-hotfix.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-post-hardening.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-listing-guard.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-retro-cleanup.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-title-casing-fix.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-url-fix.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-quality.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-matcher.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-source-evidence.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-state-guard.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-content-quality.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/admin/class-event-candidate-field-quality.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/mail/class-mail-observability.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/auth/class-token-service.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/rest/class-company-media.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/rest/class-job-application-files.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/rest/class-sitemap-snapshot.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/graphql/types.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-auth-mutations.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-password-reset-mutations.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-company-mutations.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-company-profile.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-company-settings.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-profile-completion.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-company-directory.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-directory-facets.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-company-members.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-session-query.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-location-options.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/auth/class-company-access.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-owned-content.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-content-submissions.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-offers.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-job-applications.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-job-application-access-fix.php';
-        require_once SEKTOREL_CORE_PATH . 'includes/graphql/class-event-reminders.php';
+
+        Sektorel_Content_Source_Admin::init();
+        Sektorel_Content_Source_Center::init();
+        Sektorel_Content_Source_Scanner::init();
+        Sektorel_Content_Candidate_Triage::init();
+        Sektorel_Content_Source_TOBB_Detail_Date::init();
+    }
+
+    private function bootstrap_event_admin() {
+        $files = array(
+            'includes/admin/class-event-source-psb-anatolia.php',
+            'includes/admin/class-event-source-lifecycle-repair.php',
+            'includes/admin/class-event-source-admin.php',
+            'includes/admin/class-event-source-role.php',
+            'includes/admin/class-event-source-tobb.php',
+            'includes/admin/class-event-source-tobb-taxonomy.php',
+            'includes/admin/class-event-source-tobb-taxonomy-ui.php',
+            'includes/admin/class-event-source-tobb-location-resolver.php',
+            'includes/admin/class-event-source-center.php',
+            'includes/admin/class-event-source-importer-fixed.php',
+            'includes/admin/class-event-source-import-header-fix.php',
+            'includes/admin/class-event-source-url-normalizer.php',
+            'includes/admin/class-event-source-checker.php',
+            'includes/admin/class-event-source-single-check-notice.php',
+            'includes/admin/class-event-source-health.php',
+            'includes/admin/class-event-source-target-discovery.php',
+            'includes/admin/class-event-source-target-safety.php',
+            'includes/admin/class-event-candidate-jsonld.php',
+            'includes/admin/class-event-candidate-confidence.php',
+            'includes/admin/class-event-html-safe-queue.php',
+            'includes/admin/class-event-candidate-filter-safety.php',
+            'includes/admin/class-event-candidate-html-container-filter.php',
+            'includes/admin/class-event-candidate-html-stale-filter.php',
+            'includes/admin/class-event-candidate-html-time-proximity.php',
+            'includes/admin/class-event-candidate-html.php',
+            'includes/admin/class-event-html-scan-observability.php',
+            'includes/admin/class-event-html-new-candidate-panel.php',
+            'includes/admin/class-event-html-final-guard.php',
+            'includes/admin/class-event-html-unresolved-review.php',
+            'includes/admin/class-event-html-review-hygiene.php',
+            'includes/admin/class-event-html-review-safety.php',
+            'includes/admin/class-event-html-review-triage.php',
+            'includes/admin/class-event-html-safe-convert.php',
+            'includes/admin/class-event-taxonomy-selector.php',
+            'includes/admin/class-event-taxonomy-metabox-hotfix.php',
+            'includes/admin/class-event-candidate-post-hardening.php',
+            'includes/admin/class-event-candidate-listing-guard.php',
+            'includes/admin/class-event-candidate-retro-cleanup.php',
+            'includes/admin/class-event-title-casing-fix.php',
+            'includes/admin/class-event-candidate-url-fix.php',
+            'includes/admin/class-event-candidate-quality.php',
+            'includes/admin/class-event-candidate-matcher.php',
+            'includes/admin/class-event-source-evidence.php',
+            'includes/admin/class-event-candidate-state-guard.php',
+            'includes/admin/class-event-content-quality.php',
+            'includes/admin/class-event-candidate-field-quality.php',
+        );
+
+        foreach ( $files as $file ) {
+            require_once SEKTOREL_CORE_PATH . $file;
+        }
+
+        Sektorel_Event_Source_PSB_Anatolia::init();
+        Sektorel_Event_Source_Lifecycle_Repair::init();
+        Sektorel_Event_Source_Admin::init();
+        Sektorel_Event_Source_Role::init();
+        Sektorel_Event_Source_TOBB::init();
+        Sektorel_Event_Source_TOBB_Taxonomy::init();
+        remove_action( 'admin_menu', array( 'Sektorel_Event_Source_TOBB_Taxonomy', 'add_admin_menu' ), 46 );
+        Sektorel_Event_Source_TOBB_Taxonomy_UI::init();
+        Sektorel_Event_Source_TOBB_Location_Resolver::init();
+        Sektorel_Event_Source_Center::init();
+        Sektorel_Event_Source_Importer_Fixed::init();
+        Sektorel_Event_Source_Import_Header_Fix::init();
+        Sektorel_Event_Source_URL_Normalizer::init();
+        Sektorel_Event_Source_Checker::init();
+        Sektorel_Event_Source_Single_Check_Notice::init();
+        Sektorel_Event_Source_Health::init();
+        Sektorel_Event_Source_Target_Discovery::init();
+        Sektorel_Event_Source_Target_Safety::init();
+        Sektorel_Event_Candidate_JSONLD::init();
+        Sektorel_Event_Candidate_Confidence::init();
+        Sektorel_Event_HTML_Safe_Queue::init();
+        Sektorel_Event_Candidate_Filter_Safety::init();
+        Sektorel_Event_Candidate_HTML_Container_Filter::init();
+        Sektorel_Event_Candidate_HTML_Stale_Filter::init();
+        Sektorel_Event_Candidate_HTML_Time_Proximity::init();
+        Sektorel_Event_Candidate_HTML::init();
+        Sektorel_Event_HTML_Scan_Observability::init();
+        Sektorel_Event_HTML_New_Candidate_Panel::init();
+        Sektorel_Event_HTML_Final_Guard::init();
+        Sektorel_Event_HTML_Unresolved_Review::init();
+        Sektorel_Event_HTML_Review_Hygiene::init();
+        Sektorel_Event_HTML_Review_Safety::init();
+        Sektorel_Event_HTML_Review_Triage::init();
+        Sektorel_Event_HTML_Safe_Convert::init();
+        Sektorel_Event_Taxonomy_Selector::init();
+        Sektorel_Event_Taxonomy_Metabox_Hotfix::init();
+        Sektorel_Event_Candidate_Post_Hardening::init();
+        Sektorel_Event_Candidate_Listing_Guard::init();
+        Sektorel_Event_Candidate_Retro_Cleanup::init();
+        Sektorel_Event_Title_Casing_Fix::init();
+        Sektorel_Event_Candidate_URL_Fix::init();
+        Sektorel_Event_Candidate_Quality::init();
+        Sektorel_Event_Candidate_Matcher::init();
+        Sektorel_Event_Source_Evidence::init();
+        Sektorel_Event_Candidate_State_Guard::init();
+        Sektorel_Event_Content_Quality::init();
+        Sektorel_Event_Candidate_Field_Quality::init();
+    }
+
+    private function includes() {
+        $files = array(
+            'includes/post-types/class-company.php',
+            'includes/post-types/class-lead.php',
+            'includes/post-types/class-event.php',
+            'includes/post-types/class-event-reminder.php',
+            'includes/post-types/class-event-source.php',
+            'includes/post-types/class-event-candidate.php',
+            'includes/post-types/class-content-source.php',
+            'includes/post-types/class-career.php',
+            'includes/post-types/class-offer.php',
+            'includes/post-types/class-job-application.php',
+            'includes/taxonomies/class-sector.php',
+            'includes/taxonomies/class-location.php',
+            'includes/company/class-company-ranking.php',
+            'includes/company/class-company-matcher.php',
+            'includes/company/class-company-candidates.php',
+            'includes/company/class-company-candidate-lifecycle.php',
+            'includes/fields/company-fields.php',
+            'includes/fields/lead-fields.php',
+            'includes/fields/event-fields.php',
+            'includes/fields/sector-fields.php',
+            'includes/fields/career-fields.php',
+            'includes/fields/location-fields.php',
+            'includes/fields/seo-fields.php',
+            'includes/content/class-content-category-foundation.php',
+            'includes/content/class-content-candidates.php',
+            'includes/headless/class-headless-routing.php',
+            'includes/admin/class-event-source-module.php',
+            'includes/mail/class-mail-observability.php',
+            'includes/auth/class-token-service.php',
+            'includes/rest/class-company-media.php',
+            'includes/rest/class-job-application-files.php',
+            'includes/rest/class-sitemap-snapshot.php',
+            'includes/graphql/types.php',
+            'includes/graphql/class-auth-mutations.php',
+            'includes/graphql/class-password-reset-mutations.php',
+            'includes/graphql/class-company-mutations.php',
+            'includes/graphql/class-company-profile.php',
+            'includes/graphql/class-company-settings.php',
+            'includes/graphql/class-profile-completion.php',
+            'includes/graphql/class-company-directory.php',
+            'includes/graphql/class-directory-facets.php',
+            'includes/graphql/class-company-members.php',
+            'includes/graphql/class-session-query.php',
+            'includes/graphql/class-location-options.php',
+            'includes/auth/class-company-access.php',
+            'includes/graphql/class-owned-content.php',
+            'includes/graphql/class-content-submissions.php',
+            'includes/graphql/class-offers.php',
+            'includes/graphql/class-job-applications.php',
+            'includes/graphql/class-job-application-access-fix.php',
+            'includes/graphql/class-event-reminders.php',
+        );
+
+        foreach ( $files as $file ) {
+            require_once SEKTOREL_CORE_PATH . $file;
+        }
     }
 
     public function register_post_types() {
