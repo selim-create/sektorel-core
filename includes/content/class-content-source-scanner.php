@@ -16,6 +16,7 @@ class Sektorel_Content_Source_Scanner {
     const TIMEOUT           = 15;
     const MAX_BODY_SIZE     = 2097152; // 2 MB.
     const DEFAULT_MAX_ITEMS = 20;
+    const MAX_PARSE_ITEMS   = 500;
 
     public static function init() {
         if ( ! is_admin() ) {
@@ -100,7 +101,7 @@ class Sektorel_Content_Source_Scanner {
         check_admin_referer( 'sektorel_content_seed_defaults' );
 
         $result = self::seed_default_sources();
-        $args   = array(
+        $args = array(
             'page'                  => 'sektorel-content-source-center',
             'sektorel_content_seed' => is_wp_error( $result ) ? 'error' : 'ok',
         );
@@ -151,9 +152,9 @@ class Sektorel_Content_Source_Scanner {
             wp_send_json_error( array( 'message' => 'Tarama kuyruğu bulunamadı veya süresi doldu.' ) );
         }
 
-        $totals = array( 'created' => 0, 'existing' => 0, 'duplicates' => 0, 'errors' => 0 );
+        $totals   = array( 'created' => 0, 'existing' => 0, 'duplicates' => 0, 'errors' => 0 );
         $messages = array();
-        $batch = array_slice( $ids, $offset, self::BATCH_SIZE );
+        $batch    = array_slice( $ids, $offset, self::BATCH_SIZE );
 
         foreach ( $batch as $source_id ) {
             $source_id = absint( $source_id );
@@ -275,6 +276,7 @@ class Sektorel_Content_Source_Scanner {
                     'role'        => $role,
                     'trust_level' => $trust,
                     'fetched_at'  => $fetched_at,
+                    'date_source' => $item['date_source'],
                 ),
             ) );
 
@@ -426,29 +428,56 @@ class Sektorel_Content_Source_Scanner {
             return new WP_Error( 'invalid_rss_xml', 'RSS/XML ayrıştırılamadı: ' . $detail );
         }
 
-        $items = array();
-        $nodes = isset( $xml->channel->item ) ? $xml->channel->item : ( isset( $xml->entry ) ? $xml->entry : array() );
+        $items   = array();
+        $nodes   = isset( $xml->channel->item ) ? $xml->channel->item : ( isset( $xml->entry ) ? $xml->entry : array() );
         $is_atom = isset( $xml->entry );
+        $index   = 0;
 
         foreach ( $nodes as $node ) {
-            $items[] = $is_atom ? self::parse_atom_entry( $node, $feed_url, $base_url ) : self::parse_rss_item( $node, $feed_url, $base_url );
-            if ( count( $items ) >= $limit ) {
+            $item = $is_atom ? self::parse_atom_entry( $node, $feed_url, $base_url ) : self::parse_rss_item( $node, $feed_url, $base_url );
+            if ( is_array( $item ) && ( ! empty( $item['title'] ) || ! empty( $item['url'] ) ) ) {
+                $item['_feed_index'] = $index;
+                $items[] = $item;
+            }
+            $index++;
+            if ( $index >= self::MAX_PARSE_ITEMS ) {
                 break;
             }
         }
 
-        $items = array_values( array_filter( $items, static function( $item ) {
-            return is_array( $item ) && ( ! empty( $item['title'] ) || ! empty( $item['url'] ) );
-        } ) );
+        if ( ! $items ) {
+            return new WP_Error( 'rss_has_no_items', 'Feed içinde okunabilir RSS/Atom öğesi bulunamadı.' );
+        }
 
-        return $items ? $items : new WP_Error( 'rss_has_no_items', 'Feed içinde okunabilir RSS/Atom öğesi bulunamadı.' );
+        usort( $items, static function( $a, $b ) {
+            $a_ts = ! empty( $a['published_at'] ) ? strtotime( $a['published_at'] . ' UTC' ) : false;
+            $b_ts = ! empty( $b['published_at'] ) ? strtotime( $b['published_at'] . ' UTC' ) : false;
+
+            if ( $a_ts && $b_ts && $a_ts !== $b_ts ) {
+                return $a_ts > $b_ts ? -1 : 1;
+            }
+            if ( $a_ts && ! $b_ts ) {
+                return -1;
+            }
+            if ( ! $a_ts && $b_ts ) {
+                return 1;
+            }
+            return (int) $a['_feed_index'] <=> (int) $b['_feed_index'];
+        } );
+
+        $items = array_slice( $items, 0, max( 1, absint( $limit ) ) );
+        foreach ( $items as &$item ) {
+            unset( $item['_feed_index'] );
+        }
+        unset( $item );
+
+        return $items;
     }
 
     private static function parse_rss_item( SimpleXMLElement $node, $feed_url, $base_url ) {
         $title       = self::clean_text( (string) $node->title, 1000 );
         $link        = self::resolve_url( trim( (string) $node->link ), $base_url ?: $feed_url );
         $guid        = trim( (string) $node->guid );
-        $published   = trim( (string) $node->pubDate );
         $description = (string) $node->description;
         $namespaces  = $node->getNameSpaces( true );
 
@@ -458,19 +487,24 @@ class Sektorel_Content_Source_Scanner {
                 $description = (string) $content->encoded;
             }
         }
-        if ( ! $published && isset( $namespaces['dc'] ) ) {
-            $dc = $node->children( $namespaces['dc'] );
-            $published = isset( $dc->date ) ? trim( (string) $dc->date ) : '';
-        }
 
+        list( $published, $date_source ) = self::extract_date_value( $node );
         $published_at = self::normalize_feed_date( $published );
+
         return array(
             'source_item_key' => self::item_key( $guid, $link, $title, $published_at ),
-            'title' => $title, 'url' => $link, 'published_at' => $published_at,
-            'summary' => self::clean_text( $description, 20000 ),
-            'raw_payload' => array(
-                'guid' => self::clean_text( $guid, 2000 ), 'title' => $title, 'link' => $link,
-                'published' => $published, 'description' => self::clean_text( $description, 20000 ),
+            'title'           => $title,
+            'url'             => $link,
+            'published_at'    => $published_at,
+            'summary'         => self::clean_text( $description, 20000 ),
+            'date_source'     => $date_source,
+            'raw_payload'     => array(
+                'guid'        => self::clean_text( $guid, 2000 ),
+                'title'       => $title,
+                'link'        => $link,
+                'published'   => $published,
+                'date_source' => $date_source,
+                'description' => self::clean_text( $description, 20000 ),
             ),
         );
     }
@@ -479,6 +513,7 @@ class Sektorel_Content_Source_Scanner {
         $title = self::clean_text( (string) $node->title, 1000 );
         $guid  = trim( (string) $node->id );
         $link  = '';
+
         foreach ( $node->link as $link_node ) {
             $href = trim( (string) $link_node['href'] );
             $rel  = trim( (string) $link_node['rel'] );
@@ -487,17 +522,62 @@ class Sektorel_Content_Source_Scanner {
                 break;
             }
         }
+
         $link = self::resolve_url( $link, $base_url ?: $feed_url );
-        $published = trim( (string) $node->published ) ?: trim( (string) $node->updated );
-        $summary   = trim( (string) $node->content ) ? (string) $node->content : (string) $node->summary;
+        $summary = trim( (string) $node->content ) ? (string) $node->content : (string) $node->summary;
+        list( $published, $date_source ) = self::extract_date_value( $node );
         $published_at = self::normalize_feed_date( $published );
 
         return array(
             'source_item_key' => self::item_key( $guid, $link, $title, $published_at ),
-            'title' => $title, 'url' => $link, 'published_at' => $published_at,
-            'summary' => self::clean_text( $summary, 20000 ),
-            'raw_payload' => array( 'id' => self::clean_text( $guid, 2000 ), 'title' => $title, 'link' => $link, 'published' => $published ),
+            'title'           => $title,
+            'url'             => $link,
+            'published_at'    => $published_at,
+            'summary'         => self::clean_text( $summary, 20000 ),
+            'date_source'     => $date_source,
+            'raw_payload'     => array(
+                'id'          => self::clean_text( $guid, 2000 ),
+                'title'       => $title,
+                'link'        => $link,
+                'published'   => $published,
+                'date_source' => $date_source,
+            ),
         );
+    }
+
+    private static function extract_date_value( SimpleXMLElement $node ) {
+        $priority = array( 'pubdate', 'published', 'publicationdate', 'publishdate', 'date', 'tarih', 'created', 'updated' );
+        $values = array();
+
+        foreach ( $node->children() as $name => $child ) {
+            $values[ strtolower( (string) $name ) ] = trim( (string) $child );
+        }
+
+        foreach ( $node->getNameSpaces( true ) as $prefix => $uri ) {
+            $children = $node->children( $uri );
+            foreach ( $children as $name => $child ) {
+                $values[ strtolower( (string) $name ) ] = trim( (string) $child );
+                $values[ strtolower( (string) $prefix . ':' . (string) $name ) ] = trim( (string) $child );
+            }
+        }
+
+        foreach ( $priority as $wanted ) {
+            foreach ( $values as $name => $value ) {
+                $local = false !== strpos( $name, ':' ) ? substr( $name, strrpos( $name, ':' ) + 1 ) : $name;
+                if ( $wanted === $local && '' !== $value ) {
+                    return array( $value, $name );
+                }
+            }
+        }
+
+        foreach ( $values as $name => $value ) {
+            $local = false !== strpos( $name, ':' ) ? substr( $name, strrpos( $name, ':' ) + 1 ) : $name;
+            if ( '' !== $value && preg_match( '/(?:date|tarih|publish|created|updated)/i', $local ) ) {
+                return array( $value, $name );
+            }
+        }
+
+        return array( '', '' );
     }
 
     private static function candidate_exists( $source_key, $source_item_key ) {
@@ -505,6 +585,7 @@ class Sektorel_Content_Source_Scanner {
         if ( ! $source_item_key ) {
             return false;
         }
+
         return (bool) $wpdb->get_var( $wpdb->prepare(
             'SELECT id FROM ' . Sektorel_Content_Candidates::table_name() . ' WHERE source_key = %s AND source_item_key = %s LIMIT 1',
             $source_key,
@@ -524,11 +605,35 @@ class Sektorel_Content_Source_Scanner {
     }
 
     private static function normalize_feed_date( $value ) {
-        $value = trim( (string) $value );
+        $value = trim( html_entity_decode( (string) $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
         if ( ! $value ) {
             return null;
         }
-        $timestamp = strtotime( $value );
+
+        $months = array(
+            'Ocak' => 'January', 'Oca' => 'Jan',
+            'Şubat' => 'February', 'Subat' => 'February', 'Şub' => 'Feb', 'Sub' => 'Feb',
+            'Mart' => 'March', 'Mar' => 'Mar',
+            'Nisan' => 'April', 'Nis' => 'Apr',
+            'Mayıs' => 'May', 'Mayis' => 'May', 'May' => 'May',
+            'Haziran' => 'June', 'Haz' => 'Jun',
+            'Temmuz' => 'July', 'Tem' => 'Jul',
+            'Ağustos' => 'August', 'Agustos' => 'August', 'Ağu' => 'Aug', 'Agu' => 'Aug',
+            'Eylül' => 'September', 'Eylul' => 'September', 'Eyl' => 'Sep',
+            'Ekim' => 'October', 'Eki' => 'Oct',
+            'Kasım' => 'November', 'Kasim' => 'November', 'Kas' => 'Nov',
+            'Aralık' => 'December', 'Aralik' => 'December', 'Ara' => 'Dec',
+        );
+        $normalized = strtr( $value, $months );
+
+        $timestamp = strtotime( $normalized );
+        if ( false === $timestamp && preg_match( '/\b(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?\b/u', $normalized, $m ) ) {
+            $hour   = isset( $m[4] ) ? (int) $m[4] : 0;
+            $minute = isset( $m[5] ) ? (int) $m[5] : 0;
+            $second = isset( $m[6] ) ? (int) $m[6] : 0;
+            $timestamp = gmmktime( $hour, $minute, $second, (int) $m[2], (int) $m[1], (int) $m[3] );
+        }
+
         return false === $timestamp ? null : gmdate( 'Y-m-d H:i:s', $timestamp );
     }
 
@@ -537,6 +642,7 @@ class Sektorel_Content_Source_Scanner {
         if ( ! $url ) {
             return '';
         }
+
         $parts = wp_parse_url( $url );
         if ( is_array( $parts ) && ! empty( $parts['scheme'] ) && ! empty( $parts['host'] ) ) {
             return in_array( strtolower( $parts['scheme'] ), array( 'http', 'https' ), true ) ? esc_url_raw( $url ) : '';
