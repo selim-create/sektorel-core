@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Sektorel Core
  * Description: Sektörel Ajanda projesi için CPT, Taxonomy ve API tanımlarını içeren çekirdek eklenti.
- * Version: 1.69.4
+ * Version: 1.69.5
  * Author: Sektörel Ajanda Dev Team
  * Text Domain: sektorel-core
  */
@@ -25,8 +25,33 @@ class Sektorel_Core {
     }
 
     public function __construct() {
+        // Native WordPress authentication must stay completely independent from
+        // the headless/runtime stack. This covers login, logout and lost-password
+        // requests handled by wp-login.php.
+        if ( $this->is_native_login_request() ) {
+            return;
+        }
+
         $this->includes();
 
+        add_action( 'init', array( $this, 'register_post_types' ) );
+        add_action( 'init', array( $this, 'register_taxonomies' ) );
+        add_action( 'init', array( $this, 'init_fields' ) );
+
+        if ( is_admin() ) {
+            // Keep authenticated wp-admin on a deliberately small runtime.
+            // API/GraphQL/headless/token/reminder services are request-specific
+            // and are not needed to render or operate the native admin UI.
+            Sektorel_Event_Source_Module::init();
+            Sektorel_Company_Ranking::init();
+            Sektorel_Company_Candidates::init();
+            Sektorel_Content_Candidates::init();
+            Sektorel_Content_Category_Foundation::init();
+            $this->bootstrap_admin();
+            return;
+        }
+
+        // Public/API/GraphQL/cron runtime.
         Sektorel_Event_Source_Module::init();
         Sektorel_Token_Service::init();
         Sektorel_Company_Media::init();
@@ -39,15 +64,6 @@ class Sektorel_Core {
         Sektorel_Mail_Observability::init();
         Sektorel_Event_Reminders::init();
         Sektorel_Headless_Routing::init();
-        Sektorel_Content_Category_Foundation::init();
-
-        add_action( 'init', array( $this, 'register_post_types' ) );
-        add_action( 'init', array( $this, 'register_taxonomies' ) );
-        add_action( 'init', array( $this, 'init_fields' ) );
-
-        if ( is_admin() ) {
-            $this->bootstrap_admin();
-        }
 
         Sektorel_Company_Mutations::init();
         Sektorel_Company_Profile::init();
@@ -65,6 +81,14 @@ class Sektorel_Core {
         Sektorel_Offers::init();
         Sektorel_Job_Applications::init();
         add_action( 'graphql_register_types', array( $this, 'register_graphql_types' ) );
+    }
+
+    private function is_native_login_request() {
+        $script_name = isset( $_SERVER['SCRIPT_NAME'] ) ? (string) $_SERVER['SCRIPT_NAME'] : '';
+        $php_self    = isset( $_SERVER['PHP_SELF'] ) ? (string) $_SERVER['PHP_SELF'] : '';
+
+        return 'wp-login.php' === basename( $script_name ) ||
+            'wp-login.php' === basename( $php_self );
     }
 
     /**
