@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Sektorel Core
  * Description: Sektörel Ajanda projesi için CPT, Taxonomy ve API tanımlarını içeren çekirdek eklenti.
- * Version: 1.69.5
+ * Version: 1.69.6
  * Author: Sektörel Ajanda Dev Team
  * Text Domain: sektorel-core
  */
@@ -26,8 +26,9 @@ class Sektorel_Core {
 
     public function __construct() {
         // Native WordPress authentication must stay completely independent from
-        // the headless/runtime stack. This covers login, logout and lost-password
-        // requests handled by wp-login.php.
+        // the headless/runtime stack. Hostinger/FastCGI may expose wp-login.php
+        // through REQUEST_URI while SCRIPT_NAME/PHP_SELF point at index.php, so
+        // all three request surfaces are checked.
         if ( $this->is_native_login_request() ) {
             return;
         }
@@ -39,14 +40,9 @@ class Sektorel_Core {
         add_action( 'init', array( $this, 'init_fields' ) );
 
         if ( is_admin() ) {
-            // Keep authenticated wp-admin on a deliberately small runtime.
-            // API/GraphQL/headless/token/reminder services are request-specific
-            // and are not needed to render or operate the native admin UI.
-            Sektorel_Event_Source_Module::init();
-            Sektorel_Company_Ranking::init();
-            Sektorel_Company_Candidates::init();
-            Sektorel_Content_Candidates::init();
-            Sektorel_Content_Category_Foundation::init();
+            // Ordinary Dashboard requests stay intentionally minimal. Company,
+            // content and event operational services are initialized only by
+            // bootstrap_admin() when their own screen/action is requested.
             $this->bootstrap_admin();
             return;
         }
@@ -86,22 +82,22 @@ class Sektorel_Core {
     private function is_native_login_request() {
         $script_name = isset( $_SERVER['SCRIPT_NAME'] ) ? (string) $_SERVER['SCRIPT_NAME'] : '';
         $php_self    = isset( $_SERVER['PHP_SELF'] ) ? (string) $_SERVER['PHP_SELF'] : '';
+        $request_uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '';
+        $request_path = $request_uri ? parse_url( $request_uri, PHP_URL_PATH ) : '';
 
         return 'wp-login.php' === basename( $script_name ) ||
-            'wp-login.php' === basename( $php_self );
+            'wp-login.php' === basename( $php_self ) ||
+            ( is_string( $request_path ) && 'wp-login.php' === basename( $request_path ) );
     }
 
     /**
      * Keep the ordinary authenticated Dashboard lightweight.
      *
      * Before 1.69.4 every wp-admin request initialized the complete company,
-     * content and event operations tree. Login itself was fast, but the first
-     * authenticated /wp-admin/ request could stall while dozens of unrelated
-     * scanners, matchers, importers and review tools attached hooks.
-     *
-     * Core Console remains available on every admin request so navigation is
-     * stable. Operational groups are initialized only for their own screens or
-     * Sektorel AJAX/admin-post actions.
+     * content and event operations tree. 1.69.6 additionally removes candidate,
+     * category-foundation, ranking and event-module initialization from unrelated
+     * Dashboard requests. Operational groups now boot only for their own screens
+     * or Sektorel AJAX/admin-post actions.
      */
     private function bootstrap_admin() {
         require_once SEKTOREL_CORE_PATH . 'includes/core/class-core-settings.php';
@@ -116,12 +112,17 @@ class Sektorel_Core {
             $this->bootstrap_demo_admin();
         }
         if ( $scope['all'] || $scope['company'] ) {
+            Sektorel_Company_Ranking::init();
+            Sektorel_Company_Candidates::init();
             $this->bootstrap_company_admin();
         }
         if ( $scope['all'] || $scope['content'] ) {
+            Sektorel_Content_Candidates::init();
+            Sektorel_Content_Category_Foundation::init();
             $this->bootstrap_content_admin();
         }
         if ( $scope['all'] || $scope['event'] ) {
+            Sektorel_Event_Source_Module::init();
             $this->bootstrap_event_admin();
         }
     }
