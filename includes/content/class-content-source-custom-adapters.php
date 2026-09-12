@@ -76,24 +76,34 @@ class Sektorel_Content_Source_Custom_Adapters {
             '#/site/tr/genel/detay/(\d+)/[^?#]+#i'
         );
 
+        // Some KOSGEB responses mix www/non-www hosts or root-relative paths.
+        // If DOM grouping is empty, recover only official detail URLs from raw HTML.
+        if ( ! $groups ) {
+            $groups = self::collect_kosgeb_raw_groups( $html, $listing_url );
+        }
+
         $items = array();
         foreach ( $groups as $url => $group ) {
             if ( ! preg_match( '#/site/tr/genel/detay/(\d+)/#i', $url, $match ) ) {
                 continue;
             }
 
-            $title_anchor = self::best_title_anchor( $group['anchors'] );
-            if ( ! $title_anchor ) {
-                continue;
+            $title_anchor = self::best_title_anchor( $group['anchors'] ?? array() );
+            $title        = $title_anchor ? self::clean_text( $title_anchor->textContent, 1000 ) : '';
+            $context      = '';
+
+            if ( $title_anchor ) {
+                $container = self::compact_container( $title_anchor, $title );
+                $context   = $container ? self::clean_text( $container->textContent, 5000 ) : $title;
+            } elseif ( ! empty( $group['context'] ) ) {
+                $context = self::clean_text( $group['context'], 5000 );
+                $title   = self::title_from_context( $context );
             }
 
-            $title = self::clean_text( $title_anchor->textContent, 1000 );
             if ( mb_strlen( $title, 'UTF-8' ) < 8 ) {
                 continue;
             }
 
-            $container = self::compact_container( $title_anchor, $title );
-            $context   = $container ? self::clean_text( $container->textContent, 5000 ) : $title;
             $date_raw  = self::extract_turkish_date( $context );
             $published = self::normalize_date( $date_raw );
             $summary   = self::summary_from_context( $context, $title, $date_raw );
@@ -132,7 +142,7 @@ class Sektorel_Content_Source_Custom_Adapters {
 
         $items = array();
         foreach ( $groups as $url => $group ) {
-            $title_anchor = self::best_title_anchor( $group['anchors'] );
+            $title_anchor = self::best_title_anchor( $group['anchors'] ?? array() );
             if ( ! $title_anchor ) {
                 continue;
             }
@@ -224,10 +234,11 @@ class Sektorel_Content_Source_Custom_Adapters {
     }
 
     private static function collect_link_groups( DOMDocument $dom, $page_url, $path_pattern ) {
-        $xpath  = new DOMXPath( $dom );
-        $nodes  = $xpath->query( '//a[@href]' );
-        $groups = array();
-        $seen   = 0;
+        $xpath     = new DOMXPath( $dom );
+        $nodes     = $xpath->query( '//a[@href]' );
+        $groups    = array();
+        $seen      = 0;
+        $page_host = self::canonical_host( (string) wp_parse_url( $page_url, PHP_URL_HOST ) );
 
         if ( ! $nodes ) {
             return $groups;
@@ -246,7 +257,7 @@ class Sektorel_Content_Source_Custom_Adapters {
             if ( ! preg_match( $path_pattern, $path ) ) {
                 continue;
             }
-            if ( strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) ) !== strtolower( (string) wp_parse_url( $page_url, PHP_URL_HOST ) ) ) {
+            if ( self::canonical_host( (string) wp_parse_url( $url, PHP_URL_HOST ) ) !== $page_host ) {
                 continue;
             }
 
@@ -257,6 +268,37 @@ class Sektorel_Content_Source_Custom_Adapters {
             $groups[ $url ]['anchors'][] = $node;
 
             if ( $seen >= self::MAX_LINKS ) {
+                break;
+            }
+        }
+
+        return $groups;
+    }
+
+    private static function collect_kosgeb_raw_groups( $html, $listing_url ) {
+        $groups = array();
+        if ( ! preg_match_all(
+            '#<a\b[^>]*href\s*=\s*(["\'])([^"\']*site/tr/genel/detay/(\d+)/[^"\']+)\1[^>]*>(.*?)</a>#isu',
+            (string) $html,
+            $matches,
+            PREG_SET_ORDER
+        ) ) {
+            return $groups;
+        }
+
+        foreach ( $matches as $match ) {
+            $url = self::resolve_url( html_entity_decode( $match[2], ENT_QUOTES | ENT_HTML5, 'UTF-8' ), $listing_url );
+            if ( ! $url || ! self::is_allowed_url( $url, self::allowed_hosts( 'kosgeb_news_html' ) ) ) {
+                continue;
+            }
+            $text = self::clean_text( $match[4], 1000 );
+            if ( ! isset( $groups[ $url ] ) ) {
+                $groups[ $url ] = array( 'anchors' => array(), 'context' => '' );
+            }
+            if ( mb_strlen( $text, 'UTF-8' ) > mb_strlen( (string) $groups[ $url ]['context'], 'UTF-8' ) ) {
+                $groups[ $url ]['context'] = $text;
+            }
+            if ( count( $groups ) >= self::MAX_LINKS ) {
                 break;
             }
         }
@@ -296,6 +338,13 @@ class Sektorel_Content_Source_Custom_Adapters {
         }
 
         return $best;
+    }
+
+    private static function title_from_context( $context ) {
+        $context = self::clean_text( $context, 1000 );
+        $context = preg_replace( '/\b\d{1,2}\s+(Ocak|Şubat|Subat|Mart|Nisan|Mayıs|Mayis|Haziran|Temmuz|Ağustos|Agustos|Eylül|Eylul|Ekim|Kasım|Kasim|Aralık|Aralik)\s+\d{4}\b/ui', ' ', $context );
+        $context = preg_replace( '/\b(?:devamı|devami|detaylar?|oku)\b/ui', ' ', $context );
+        return self::clean_text( $context, 350 );
     }
 
     private static function compact_container( DOMElement $anchor, $title ) {
@@ -389,6 +438,15 @@ class Sektorel_Content_Source_Custom_Adapters {
             return new WP_Error( 'custom_source_no_items', $empty_message );
         }
 
+        $deduped = array();
+        foreach ( (array) $items as $item ) {
+            $key = (string) ( $item['source_item_key'] ?? '' );
+            if ( $key && ! isset( $deduped[ $key ] ) ) {
+                $deduped[ $key ] = $item;
+            }
+        }
+        $items = array_values( $deduped );
+
         usort( $items, static function( $a, $b ) {
             $a_ts = ! empty( $a['published_at'] ) ? strtotime( $a['published_at'] . ' UTC' ) : false;
             $b_ts = ! empty( $b['published_at'] ) ? strtotime( $b['published_at'] . ' UTC' ) : false;
@@ -427,10 +485,18 @@ class Sektorel_Content_Source_Custom_Adapters {
         if ( 0 === strpos( $url, '/' ) ) {
             return esc_url_raw( $origin . $url );
         }
+        if ( preg_match( '#^(?:site|medya)/#i', $url ) ) {
+            return esc_url_raw( $origin . '/' . ltrim( $url, '/' ) );
+        }
 
         $path = isset( $base['path'] ) ? dirname( $base['path'] ) : '/';
         $path = '/' === $path ? '' : rtrim( $path, '/' );
         return esc_url_raw( $origin . $path . '/' . ltrim( $url, '/' ) );
+    }
+
+    private static function canonical_host( $host ) {
+        $host = strtolower( rtrim( trim( (string) $host ), '.' ) );
+        return 0 === strpos( $host, 'www.' ) ? substr( $host, 4 ) : $host;
     }
 
     private static function allowed_hosts( $adapter ) {
@@ -451,7 +517,10 @@ class Sektorel_Content_Source_Custom_Adapters {
         if ( ! in_array( strtolower( (string) $parts['scheme'] ), array( 'http', 'https' ), true ) ) {
             return false;
         }
-        return in_array( strtolower( rtrim( (string) $parts['host'], '.' ) ), $allowed_hosts, true );
+
+        $host    = self::canonical_host( (string) $parts['host'] );
+        $allowed = array_values( array_unique( array_map( array( __CLASS__, 'canonical_host' ), (array) $allowed_hosts ) ) );
+        return in_array( $host, $allowed, true );
     }
 
     private static function clean_text( $value, $max_length ) {
@@ -460,3 +529,95 @@ class Sektorel_Content_Source_Custom_Adapters {
         return mb_substr( $value, 0, max( 1, absint( $max_length ) ) );
     }
 }
+
+/**
+ * Keep Content Engine operational screens visually under Sektörel Core and make
+ * scan failures self-explanatory without forcing the operator to hunt post meta.
+ */
+class Sektorel_Content_Admin_Navigation_Fix {
+
+    public static function init() {
+        if ( ! is_admin() ) {
+            return;
+        }
+        add_action( 'admin_menu', array( __CLASS__, 'register_core_entry' ), 998 );
+        add_filter( 'parent_file', array( __CLASS__, 'parent_file' ) );
+        add_filter( 'submenu_file', array( __CLASS__, 'submenu_file' ) );
+        add_action( 'admin_notices', array( __CLASS__, 'scan_error_notice' ), 20 );
+    }
+
+    public static function register_core_entry() {
+        if ( ! class_exists( 'Sektorel_Content_Source_Center' ) ) {
+            return;
+        }
+
+        remove_submenu_page( 'sektorel-core', 'edit.php?page=sektorel-content-source-center' );
+        add_submenu_page(
+            'sektorel-core',
+            'İçerik Motoru',
+            'İçerik Motoru',
+            'manage_options',
+            'sektorel-content-source-center',
+            array( 'Sektorel_Content_Source_Center', 'render_page' )
+        );
+    }
+
+    public static function parent_file( $parent_file ) {
+        $screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+        $page   = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+
+        if ( 'sektorel-content-source-center' === $page || ( $screen && 'content_source' === $screen->post_type ) ) {
+            return 'sektorel-core';
+        }
+        return $parent_file;
+    }
+
+    public static function submenu_file( $submenu_file ) {
+        $screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+        $page   = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+
+        if ( 'sektorel-content-source-center' === $page ) {
+            return 'sektorel-content-source-center';
+        }
+        if ( $screen && 'content_source' === $screen->post_type ) {
+            return 'edit.php?post_type=content_source';
+        }
+        return $submenu_file;
+    }
+
+    public static function scan_error_notice() {
+        $scan = isset( $_GET['sektorel_content_scan'] ) ? sanitize_key( wp_unslash( $_GET['sektorel_content_scan'] ) ) : '';
+        if ( 'error' !== $scan || ! current_user_can( 'manage_options' ) ) {
+            return;
+        }
+
+        $ids = get_posts( array(
+            'post_type'      => 'content_source',
+            'post_status'    => array( 'publish', 'draft', 'private' ),
+            'posts_per_page' => 1,
+            'fields'         => 'ids',
+            'meta_key'       => 'last_scan',
+            'orderby'        => 'meta_value',
+            'order'          => 'DESC',
+            'no_found_rows'  => true,
+        ) );
+        if ( ! $ids ) {
+            return;
+        }
+
+        $source_id = absint( $ids[0] );
+        $code      = sanitize_key( (string) get_post_meta( $source_id, 'last_error_code', true ) );
+        $message   = (string) get_post_meta( $source_id, 'last_error', true );
+        if ( ! $message ) {
+            return;
+        }
+
+        echo '<div class="notice notice-error"><p><strong>' . esc_html( get_the_title( $source_id ) ) . '</strong><br>';
+        if ( $code ) {
+            echo '<code>' . esc_html( $code ) . '</code> — ';
+        }
+        echo esc_html( $message ) . '</p></div>';
+    }
+}
+
+Sektorel_Content_Admin_Navigation_Fix::init();
