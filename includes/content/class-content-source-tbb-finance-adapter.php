@@ -8,11 +8,11 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Deterministic first-page adapter for finance-focused TBB news.
  *
  * The audited TBB /haberler listing exposes each news record inside
- * div.etkinlikler-item with an exact dd.mm.yyyy publication date, one summary
- * paragraph, one source image and a canonical /haberler/{slug} link. The page is
- * editorially broad, so only records with an explicit financing/credit signal
- * are accepted into the Finansman desk. Institutional visits, events and generic
- * banking news fail closed.
+ * div.etkinlikler-item with an exact dd.mm.yyyy publication date, one title
+ * paragraph, one source image, a card-level descriptive text and a canonical
+ * /haberler/{slug} link. The page is editorially broad, so only records with an
+ * explicit financing/credit signal are accepted into the Finansman desk.
+ * Institutional visits, events and generic banking news fail closed.
  */
 class Sektorel_Content_Source_TBB_Finance_Adapter {
 
@@ -105,8 +105,8 @@ class Sektorel_Content_Source_TBB_Finance_Adapter {
             $context   = self::clean_text( $card->textContent, 7000 );
             $date_raw  = self::extract_numeric_date( $context );
             $published = self::normalize_numeric_date( $date_raw );
-            $summary   = self::first_summary( $xpath, $card );
-            $title     = self::title_from_card_context( $context, $date_raw, $summary );
+            $title     = self::first_title( $xpath, $card );
+            $summary   = self::summary_from_card_context( $context, $date_raw, $title );
             $image_url = self::first_image_url( $xpath, $card, $listing_url );
             $signal    = self::finance_signal( $title, $summary );
 
@@ -166,40 +166,53 @@ class Sektorel_Content_Source_TBB_Finance_Adapter {
         return array_slice( $items, 0, $limit );
     }
 
-    private static function first_summary( DOMXPath $xpath, DOMElement $card ) {
+    /**
+     * TBB cards currently expose the headline in their sole <p> element.
+     * Do not treat that paragraph as the summary; production diagnostics proved
+     * that doing so empties the derived title and rejects every card.
+     */
+    private static function first_title( DOMXPath $xpath, DOMElement $card ) {
         $paragraphs = $xpath->query( './/p', $card );
         if ( ! $paragraphs ) {
             return '';
         }
 
         foreach ( $paragraphs as $paragraph ) {
-            $summary = self::clean_text( $paragraph->textContent, 4000 );
-            $summary = preg_replace( '/\s*Haberin\s+Devamı\s*$/iu', '', $summary );
-            $summary = trim( (string) $summary );
-            if ( mb_strlen( $summary, 'UTF-8' ) >= 40 ) {
-                return $summary;
+            $title = self::clean_text( $paragraph->textContent, 1000 );
+            $title = preg_replace( '/\s*Haberin\s+Devamı\s*$/iu', '', $title );
+            $title = trim( (string) $title );
+            if ( mb_strlen( $title, 'UTF-8' ) >= 8 ) {
+                return $title;
             }
         }
 
         return '';
     }
 
-    private static function title_from_card_context( $context, $date_raw, $summary ) {
-        $context = trim( (string) $context );
+    /**
+     * The descriptive summary is card text after the exact date and headline.
+     * This keeps title, date and summary in one audited DOM scope and avoids
+     * widening extraction to surrounding list/container text.
+     */
+    private static function summary_from_card_context( $context, $date_raw, $title ) {
+        $summary = trim( (string) $context );
+
         if ( $date_raw ) {
-            $context = preg_replace( '/^\s*' . preg_quote( $date_raw, '/' ) . '\s*/u', '', $context, 1 );
+            $summary = preg_replace(
+                '/^\s*' . preg_quote( $date_raw, '/' ) . '\s*/u',
+                '',
+                $summary,
+                1
+            );
         }
-        $context = trim( (string) $context );
+        $summary = trim( (string) $summary );
 
-        if ( $summary ) {
-            $position = mb_strpos( $context, $summary, 0, 'UTF-8' );
-            if ( false !== $position ) {
-                $context = mb_substr( $context, 0, $position, 'UTF-8' );
-            }
+        if ( $title && 0 === mb_strpos( $summary, $title, 0, 'UTF-8' ) ) {
+            $summary = mb_substr( $summary, mb_strlen( $title, 'UTF-8' ), null, 'UTF-8' );
         }
 
-        $context = preg_replace( '/\s*Haberin\s+Devamı\s*$/iu', '', (string) $context );
-        return self::clean_text( $context, 1000 );
+        $summary = preg_replace( '/\s*Haberin\s+Devamı\s*$/iu', '', (string) $summary );
+        return self::clean_text( $summary, 4000 );
     }
 
     private static function finance_signal( $title, $summary ) {
