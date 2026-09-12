@@ -110,7 +110,13 @@ class Sektorel_Content_Source_Custom_Adapters {
 
             // KOSGEB list acceptance is fail-closed: a real news card must carry
             // both an explicit publication date and a non-trivial summary.
-            if ( ! $date_raw || ! $published || mb_strlen( $summary, 'UTF-8' ) < 20 ) {
+            if (
+                ! $date_raw ||
+                ! $published ||
+                mb_strlen( $summary, 'UTF-8' ) < 20 ||
+                self::looks_mojibaked( $title ) ||
+                self::looks_mojibaked( $summary )
+            ) {
                 continue;
             }
 
@@ -131,7 +137,7 @@ class Sektorel_Content_Source_Custom_Adapters {
             );
         }
 
-        return self::finalize_items( $items, $limit, 'KOSGEB haber listesinde tarih ve özet taşıyan güvenilir kayıt bulunamadı.' );
+        return self::finalize_items( $items, $limit, 'KOSGEB haber listesinde tarih, özet ve UTF-8 kalite kontrolünü geçen güvenilir kayıt bulunamadı.' );
     }
 
     private static function parse_sanayi_news( $html, $listing_url, $limit ) {
@@ -166,6 +172,11 @@ class Sektorel_Content_Source_Custom_Adapters {
             $path      = (string) wp_parse_url( $url, PHP_URL_PATH );
             $slug      = sanitize_title( basename( untrailingslashit( $path ) ) );
             $item_key  = $slug ? 'sanayi:' . $slug : 'sanayi:' . sha1( $url );
+
+            // Never persist text that still carries a known UTF-8 mojibake signature.
+            if ( self::looks_mojibaked( $title ) || self::looks_mojibaked( $summary ) ) {
+                continue;
+            }
 
             $items[] = array(
                 'source_item_key' => mb_substr( $item_key, 0, 191 ),
@@ -230,13 +241,65 @@ class Sektorel_Content_Source_Custom_Adapters {
             return new WP_Error( 'dom_unavailable', 'Sunucuda DOMDocument eklentisi bulunamadı.' );
         }
 
+        $html = self::normalize_html_encoding( $html );
+        if ( is_wp_error( $html ) ) {
+            return $html;
+        }
+
+        // libxml's HTML parser can reinterpret valid UTF-8 as a legacy single-byte
+        // encoding when a source carries conflicting/late charset metadata. Encoding
+        // non-ASCII code points as numeric entities makes the DOM parse deterministic
+        // without altering tags, URLs or ASCII attributes.
+        if ( function_exists( 'mb_encode_numericentity' ) ) {
+            $html = mb_encode_numericentity(
+                $html,
+                array( 0x80, 0x10FFFF, 0, 0xFFFFFF ),
+                'UTF-8'
+            );
+        }
+
         $previous = libxml_use_internal_errors( true );
         $dom      = new DOMDocument();
-        $loaded   = $dom->loadHTML( '<?xml encoding="utf-8" ?>' . (string) $html, LIBXML_NOWARNING | LIBXML_NOERROR | LIBXML_NONET );
+        $loaded   = $dom->loadHTML(
+            '<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">' . $html,
+            LIBXML_NOWARNING | LIBXML_NOERROR | LIBXML_NONET
+        );
         libxml_clear_errors();
         libxml_use_internal_errors( $previous );
 
         return $loaded ? $dom : new WP_Error( 'invalid_source_html', 'Kaynak HTML ayrıştırılamadı.' );
+    }
+
+    private static function normalize_html_encoding( $html ) {
+        $html = (string) $html;
+        if ( '' === $html ) {
+            return $html;
+        }
+
+        if ( 0 === strncmp( $html, "\xEF\xBB\xBF", 3 ) ) {
+            $html = substr( $html, 3 );
+        }
+
+        if ( ! function_exists( 'mb_check_encoding' ) || mb_check_encoding( $html, 'UTF-8' ) ) {
+            return $html;
+        }
+
+        if ( function_exists( 'mb_detect_encoding' ) && function_exists( 'mb_convert_encoding' ) ) {
+            $detected = mb_detect_encoding(
+                $html,
+                array( 'Windows-1254', 'ISO-8859-9', 'ISO-8859-1' ),
+                true
+            );
+
+            if ( $detected ) {
+                $html = mb_convert_encoding( $html, 'UTF-8', $detected );
+                if ( mb_check_encoding( $html, 'UTF-8' ) ) {
+                    return $html;
+                }
+            }
+        }
+
+        return new WP_Error( 'invalid_source_encoding', 'Kaynak HTML UTF-8 olarak normalize edilemedi.' );
     }
 
     private static function collect_link_groups( DOMDocument $dom, $page_url, $path_pattern ) {
@@ -437,6 +500,25 @@ class Sektorel_Content_Source_Custom_Adapters {
     private static function looks_like_date( $text ) {
         $text = trim( (string) $text );
         return (bool) ( self::extract_turkish_date( $text ) || self::extract_numeric_date( $text ) );
+    }
+
+    private static function looks_mojibaked( $text ) {
+        $text = (string) $text;
+        if ( '' === $text ) {
+            return false;
+        }
+
+        foreach ( array(
+            'Ã¼', 'Ãœ', 'Ã¶', 'Ã–', 'Ã§', 'Ã‡',
+            'Ä°', 'Ä±', 'ÄŸ', 'Äž', 'ÅŸ', 'Åž',
+            'â€™', 'â€œ', 'â€', 'â€“', 'â€”', 'Â ',
+        ) as $marker ) {
+            if ( false !== strpos( $text, $marker ) ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static function finalize_items( $items, $limit, $empty_message ) {
