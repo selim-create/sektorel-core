@@ -4,6 +4,9 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
+require_once __DIR__ . '/class-content-source-custom-adapters.php';
+require_once __DIR__ . '/class-content-source-iso-adapter.php';
+
 /**
  * Adapter-aware bridge for the existing Content Source Scanner admin actions.
  *
@@ -136,11 +139,11 @@ class Sektorel_Content_Source_Custom_Bridge {
         $source_type = sanitize_key( (string) get_post_meta( $source_id, 'source_type', true ) );
         $adapter     = sanitize_key( (string) get_post_meta( $source_id, 'adapter', true ) );
 
-        if (
-            'custom' !== $source_type ||
-            ! class_exists( 'Sektorel_Content_Source_Custom_Adapters' ) ||
-            ! Sektorel_Content_Source_Custom_Adapters::supported( $adapter )
-        ) {
+        $generic_supported = class_exists( 'Sektorel_Content_Source_Custom_Adapters' ) &&
+            Sektorel_Content_Source_Custom_Adapters::supported( $adapter );
+        $iso_supported = 'iso_news_html' === $adapter && class_exists( 'Sektorel_Content_Source_ISO_Adapter' );
+
+        if ( 'custom' !== $source_type || ( ! $generic_supported && ! $iso_supported ) ) {
             return Sektorel_Content_Source_Scanner::scan_source( $source_id );
         }
 
@@ -206,7 +209,12 @@ class Sektorel_Content_Source_Custom_Bridge {
             return self::source_error( $source_id, 'Kaynak key alanı eksik.', 'missing_source_key' );
         }
 
-        $fetched = Sektorel_Content_Source_Custom_Adapters::fetch_items( $adapter, $source_id, $max_items );
+        if ( 'iso_news_html' === $adapter ) {
+            $fetched = Sektorel_Content_Source_ISO_Adapter::fetch_items( $source_id, $max_items );
+        } else {
+            $fetched = Sektorel_Content_Source_Custom_Adapters::fetch_items( $adapter, $source_id, $max_items );
+        }
+
         if ( is_wp_error( $fetched ) ) {
             return self::source_error( $source_id, $fetched->get_error_message(), $fetched->get_error_code() );
         }
@@ -338,6 +346,33 @@ class Sektorel_Content_Source_Custom_Bridge {
                     'ai_enabled'         => '0',
                     'max_items_per_scan' => '20',
                     'max_ai_items_daily' => '0',
+                ),
+            ),
+            array(
+                'source_key' => 'iso_news',
+                'title'      => 'İstanbul Sanayi Odası — Haberler',
+                'meta'       => array(
+                    'source_key'         => 'iso_news',
+                    'base_url'           => 'https://www.iso.org.tr/',
+                    'feed_url'           => 'https://www.iso.org.tr/haberler',
+                    'source_type'        => 'custom',
+                    'adapter'            => 'iso_news_html',
+                    'role'               => 'official',
+                    'trust_level'        => 'high',
+                    'language'           => 'tr',
+                    'category_slugs'     => 'sanayi-uretim',
+                    'scan_interval'      => 'manual',
+                    'enabled'            => '1',
+                    'ai_enabled'         => '0',
+                    'max_items_per_scan' => '20',
+                    'max_ai_items_daily' => '0',
+                    'primary_desk'       => 'sanayi-uretim',
+                    'topic_scope'        => 'imalat-sanayi,uretim,pmi',
+                    'sector_scope'       => 'multi-sector',
+                    'geography'          => 'tr-national',
+                    'source_tier'        => 'b',
+                    'detail_strategy'    => 'detail_page_required',
+                    'image_policy'       => 'source_preferred',
                 ),
             ),
         );
