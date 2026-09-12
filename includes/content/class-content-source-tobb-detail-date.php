@@ -9,6 +9,7 @@ require_once __DIR__ . '/class-content-source-tobb-latest-date.php';
 require_once __DIR__ . '/class-content-source-tobb-archive-date.php';
 require_once __DIR__ . '/class-content-source-policy.php';
 require_once __DIR__ . '/class-content-editorial-policy.php';
+require_once __DIR__ . '/class-content-tobb-http-compat.php';
 require_once __DIR__ . '/class-content-detail-extractor.php';
 require_once __DIR__ . '/class-content-ai-draft-processor.php';
 require_once dirname( __DIR__ ) . '/core/class-core-settings.php';
@@ -23,7 +24,7 @@ require_once dirname( __DIR__ ) . '/admin/class-core-console.php';
  */
 class Sektorel_Content_Source_TOBB_Detail_Date {
 
-    const CACHE_VERSION = '7';
+    const CACHE_VERSION = '8';
     const CANONICAL_BASE_URL = 'https://www.tobb.org.tr/Sayfalar/';
 
     public static function init() {
@@ -38,6 +39,7 @@ class Sektorel_Content_Source_TOBB_Detail_Date {
         add_action( 'plugins_loaded', array( 'Sektorel_Core_Settings', 'init' ), 1 );
 
         Sektorel_Content_Editorial_Policy::init();
+        Sektorel_Content_TOBB_HTTP_Compat::init();
         Sektorel_Content_Source_TOBB_Candidate_Identity::init();
         Sektorel_Content_AI_Draft_Processor::init();
         Sektorel_Content_AI_Draft_Admin::init();
