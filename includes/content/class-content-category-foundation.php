@@ -4,6 +4,8 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
+require_once __DIR__ . '/class-content-editorial-architecture.php';
+
 /**
  * Provisions the editorial category foundation used by the Content Source Engine.
  *
@@ -23,6 +25,8 @@ class Sektorel_Content_Category_Foundation {
         if ( ! is_admin() ) {
             return;
         }
+
+        Sektorel_Content_Editorial_Architecture::init();
 
         add_action( 'admin_init', array( __CLASS__, 'maybe_seed' ) );
         add_action( 'admin_notices', array( __CLASS__, 'render_notice' ) );
