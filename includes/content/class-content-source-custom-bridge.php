@@ -8,6 +8,7 @@ require_once __DIR__ . '/class-content-source-custom-adapters.php';
 require_once __DIR__ . '/class-content-source-iso-adapter.php';
 require_once __DIR__ . '/class-content-source-btk-adapter.php';
 require_once __DIR__ . '/class-content-source-tbb-finance-adapter.php';
+require_once __DIR__ . '/class-content-source-csgb-cgm-adapter.php';
 
 /**
  * Adapter-aware bridge for the existing Content Source Scanner admin actions.
@@ -146,8 +147,9 @@ class Sektorel_Content_Source_Custom_Bridge {
         $iso_supported = 'iso_news_html' === $adapter && class_exists( 'Sektorel_Content_Source_ISO_Adapter' );
         $btk_supported = 'btk_news_html' === $adapter && class_exists( 'Sektorel_Content_Source_BTK_Adapter' );
         $tbb_supported = 'tbb_finance_news_html' === $adapter && class_exists( 'Sektorel_Content_Source_TBB_Finance_Adapter' );
+        $csgm_supported = 'csgb_cgm_news_html' === $adapter && class_exists( 'Sektorel_Content_Source_CSGM_Adapter' );
 
-        if ( 'custom' !== $source_type || ( ! $generic_supported && ! $iso_supported && ! $btk_supported && ! $tbb_supported ) ) {
+        if ( 'custom' !== $source_type || ( ! $generic_supported && ! $iso_supported && ! $btk_supported && ! $tbb_supported && ! $csgm_supported ) ) {
             return Sektorel_Content_Source_Scanner::scan_source( $source_id );
         }
 
@@ -219,6 +221,8 @@ class Sektorel_Content_Source_Custom_Bridge {
             $fetched = Sektorel_Content_Source_BTK_Adapter::fetch_items( $source_id, $max_items );
         } elseif ( 'tbb_finance_news_html' === $adapter ) {
             $fetched = Sektorel_Content_Source_TBB_Finance_Adapter::fetch_items( $source_id, $max_items );
+        } elseif ( 'csgb_cgm_news_html' === $adapter ) {
+            $fetched = Sektorel_Content_Source_CSGM_Adapter::fetch_items( $source_id, $max_items );
         } else {
             $fetched = Sektorel_Content_Source_Custom_Adapters::fetch_items( $adapter, $source_id, $max_items );
         }
@@ -434,6 +438,33 @@ class Sektorel_Content_Source_Custom_Bridge {
                     'geography'          => 'tr-national',
                     'source_tier'        => 'b',
                     'detail_strategy'    => 'detail_page_preferred',
+                    'image_policy'       => 'source_preferred',
+                ),
+            ),
+            array(
+                'source_key' => 'csgb_cgm_news',
+                'title'      => 'Çalışma Genel Müdürlüğü — İnsan & Yönetim Haberleri',
+                'meta'       => array(
+                    'source_key'         => 'csgb_cgm_news',
+                    'base_url'           => 'https://www.csgb.gov.tr/',
+                    'feed_url'           => 'https://www.csgb.gov.tr/cgm/haberler/',
+                    'source_type'        => 'custom',
+                    'adapter'            => 'csgb_cgm_news_html',
+                    'role'               => 'official',
+                    'trust_level'        => 'high',
+                    'language'           => 'tr',
+                    'category_slugs'     => 'istihdam-insan-kaynaklari',
+                    'scan_interval'      => 'manual',
+                    'enabled'            => '1',
+                    'ai_enabled'         => '0',
+                    'max_items_per_scan' => '20',
+                    'max_ai_items_daily' => '0',
+                    'primary_desk'       => 'istihdam-insan-kaynaklari',
+                    'topic_scope'        => 'istihdam,calisma-hayati,sendika-toplu-is,beceri-yetenek,adil-gecis',
+                    'sector_scope'       => 'calisma-istihdam',
+                    'geography'          => 'tr-national',
+                    'source_tier'        => 'a',
+                    'detail_strategy'    => 'detail_page_required',
                     'image_policy'       => 'source_preferred',
                 ),
             ),
