@@ -30,7 +30,7 @@ class Sektorel_Content_Detail_Extractor {
 
         $existing = self::clean_text( $row['extracted_text'] ?? '', self::MAX_TEXT_LENGTH );
         $strategy = class_exists( 'Sektorel_Content_Source_Policy' )
-            ? Sektorel_Content_Source_Policy::detail_strategy( $source_key )
+            ? Sektorel_Content_Source_Policy::detail_strategy( $source_key, absint( $row['source_id'] ?? 0 ) )
             : ( 'tcmb_press' === $source_key ? 'detail_page_required' : 'feed_only' );
 
         if ( 'feed_only' === $strategy ) {

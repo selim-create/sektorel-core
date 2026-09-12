@@ -50,8 +50,9 @@ class Sektorel_Content_Source_Policy {
     /**
      * Return a normalized coverage profile for a source key/source post.
      *
-     * Stored post meta can override registry defaults later without requiring
-     * scanner changes. Missing metadata remains conservative and explicit.
+     * Stored post meta overrides registry defaults when the field exists. This is
+     * deliberately existence-based so an explicit empty primary_desk/topic scope
+     * can clear a registry default without deleting the source profile itself.
      */
     public static function coverage_profile( $source_key, $source_id = 0 ) {
         $source_key = sanitize_key( $source_key );
@@ -64,11 +65,10 @@ class Sektorel_Content_Source_Policy {
 
         if ( $source_id ) {
             foreach ( self::coverage_fields() as $field ) {
-                $stored = get_post_meta( $source_id, $field, true );
-                if ( '' === (string) $stored ) {
+                if ( ! metadata_exists( 'post', $source_id, $field ) ) {
                     continue;
                 }
-                $profile[ $field ] = $stored;
+                $profile[ $field ] = get_post_meta( $source_id, $field, true );
             }
         }
 

@@ -4,6 +4,8 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
+require_once SEKTOREL_CORE_PATH . 'includes/content/class-content-source-policy.php';
+
 class Sektorel_Content_Source_Center {
 
     public static function init() {
@@ -47,6 +49,10 @@ class Sektorel_Content_Source_Center {
                 .sektorel-content-card{background:#fff;border:1px solid #dcdcde;padding:16px}
                 .sektorel-content-card strong{display:block;font-size:24px;margin-top:5px}
                 .sektorel-content-table{max-width:1200px}
+                .sektorel-coverage-table{max-width:1450px}
+                .sektorel-coverage-table td{vertical-align:top}
+                .sektorel-coverage-table code{white-space:nowrap}
+                .sektorel-coverage-muted{color:#646970}
                 .sektorel-status-pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#f0f0f1;font-size:12px}
                 .sektorel-status-ready{background:#d7f0db;color:#135e26}
                 .sektorel-status-review{background:#fcf0c3;color:#7a4b00}
@@ -110,6 +116,44 @@ class Sektorel_Content_Source_Center {
                                 <span style="color:#b32d2e"><?php echo esc_html( get_post_meta( $source->ID, 'last_error', true ) ); ?></span>
                             <?php else : ?>—<?php endif; ?>
                         </td>
+                    </tr>
+                <?php endforeach; endif; ?>
+                </tbody>
+            </table>
+
+            <h2 style="margin-top:28px">Source Coverage Registry</h2>
+            <p class="description">Kaynakların efektif kapsama profili. Bu tablo candidate routing yapmaz; source planning ve provenance için görünürlük sağlar.</p>
+            <table class="widefat striped sektorel-coverage-table">
+                <thead>
+                    <tr>
+                        <th>Kaynak</th>
+                        <th>Tier</th>
+                        <th>Primary Desk</th>
+                        <th>Topic Scope</th>
+                        <th>Sector Scope</th>
+                        <th>Geography</th>
+                        <th>Detail</th>
+                        <th>Image</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php if ( empty( $sources ) ) : ?>
+                    <tr><td colspan="8">Coverage profili gösterilecek kaynak bulunamadı.</td></tr>
+                <?php else : foreach ( $sources as $source ) :
+                    $source_key = sanitize_key( (string) get_post_meta( $source->ID, 'source_key', true ) );
+                    $profile = Sektorel_Content_Source_Policy::coverage_profile( $source_key, $source->ID );
+                    $topics = implode( ', ', (array) ( $profile['topic_scope'] ?? array() ) );
+                    $sectors = implode( ', ', (array) ( $profile['sector_scope'] ?? array() ) );
+                    ?>
+                    <tr>
+                        <td><a href="<?php echo esc_url( get_edit_post_link( $source->ID ) ); ?>"><?php echo esc_html( get_the_title( $source ) ); ?></a><br><code><?php echo esc_html( $source_key ?: '—' ); ?></code></td>
+                        <td><strong><?php echo esc_html( strtoupper( (string) ( $profile['source_tier'] ?? 'd' ) ) ); ?></strong></td>
+                        <td><?php echo ! empty( $profile['primary_desk'] ) ? '<code>' . esc_html( $profile['primary_desk'] ) . '</code>' : '<span class="sektorel-coverage-muted">Broad / triage</span>'; ?></td>
+                        <td><?php echo $topics ? esc_html( $topics ) : '—'; ?></td>
+                        <td><?php echo $sectors ? esc_html( $sectors ) : '—'; ?></td>
+                        <td><code><?php echo esc_html( $profile['geography'] ?? 'unspecified' ); ?></code></td>
+                        <td><code><?php echo esc_html( $profile['detail_strategy'] ?? 'feed_only' ); ?></code></td>
+                        <td><code><?php echo esc_html( $profile['image_policy'] ?? 'pexels_only' ); ?></code></td>
                     </tr>
                 <?php endforeach; endif; ?>
                 </tbody>

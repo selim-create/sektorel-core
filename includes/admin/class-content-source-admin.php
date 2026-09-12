@@ -4,6 +4,8 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
+require_once SEKTOREL_CORE_PATH . 'includes/content/class-content-source-policy.php';
+
 class Sektorel_Content_Source_Admin {
 
     public static function init() {
@@ -21,6 +23,15 @@ class Sektorel_Content_Source_Admin {
             'content_source',
             'normal',
             'high'
+        );
+
+        add_meta_box(
+            'sektorel_content_source_coverage',
+            'Source Coverage Registry',
+            array( __CLASS__, 'render_coverage_meta_box' ),
+            'content_source',
+            'normal',
+            'default'
         );
     }
 
@@ -170,6 +181,107 @@ class Sektorel_Content_Source_Admin {
         <?php
     }
 
+    public static function render_coverage_meta_box( $post ) {
+        $source_key = sanitize_key( (string) get_post_meta( $post->ID, 'source_key', true ) );
+        $profile    = Sektorel_Content_Source_Policy::coverage_profile( $source_key, $post->ID );
+        $desks      = self::primary_desk_options();
+        $tiers      = array(
+            'a' => 'Tier A — Resmî / canonical',
+            'b' => 'Tier B — Güvenilir kurum / oda / dernek',
+            'c' => 'Tier C — Kaliteli B2B medya',
+            'd' => 'Tier D — Discovery-only / bilinmiyor',
+        );
+        $detail_strategies = array(
+            'feed_only'             => 'Feed only',
+            'detail_page_preferred' => 'Detail page preferred',
+            'detail_page_required'  => 'Detail page required',
+        );
+        $image_policies = array(
+            'pexels_only'      => 'Pexels only',
+            'source_preferred' => 'Source preferred',
+            'none'             => 'Görsel kullanma',
+        );
+        ?>
+        <style>
+            .sektorel-coverage-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+            .sektorel-coverage-field{margin-bottom:16px}
+            .sektorel-coverage-field label{display:block;font-weight:600;margin-bottom:6px}
+            .sektorel-coverage-field input,.sektorel-coverage-field select{width:100%}
+            .sektorel-coverage-note{padding:10px 12px;background:#f6f7f7;border-left:4px solid #2271b1;margin:0 0 16px}
+            @media(max-width:782px){.sektorel-coverage-grid{grid-template-columns:1fr}}
+        </style>
+
+        <div class="sektorel-coverage-note">
+            Bu alanlar kaynağın kapsama/provenance profilidir. Candidate routing yine deterministik triage tarafından yapılır. Geography alanı location taxonomy terimlerini yüklemez.
+        </div>
+
+        <div class="sektorel-coverage-grid">
+            <div class="sektorel-coverage-field">
+                <label for="primary_desk">Primary Desk</label>
+                <select id="primary_desk" name="primary_desk">
+                    <?php foreach ( $desks as $key => $label ) : ?>
+                        <option value="<?php echo esc_attr( $key ); ?>" <?php selected( $profile['primary_desk'], $key ); ?>><?php echo esc_html( $label ); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <p class="description">Geniş kaynaklarda boş bırakmak fail-closed triage davranışını korur.</p>
+            </div>
+            <div class="sektorel-coverage-field">
+                <label for="source_tier">Source Tier</label>
+                <select id="source_tier" name="source_tier">
+                    <?php foreach ( $tiers as $key => $label ) : ?>
+                        <option value="<?php echo esc_attr( $key ); ?>" <?php selected( $profile['source_tier'], $key ); ?>><?php echo esc_html( $label ); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+        </div>
+
+        <div class="sektorel-coverage-grid">
+            <div class="sektorel-coverage-field">
+                <label for="topic_scope">Topic Scope</label>
+                <input id="topic_scope" name="topic_scope" type="text" value="<?php echo esc_attr( implode( ',', (array) $profile['topic_scope'] ) ); ?>" placeholder="para-politikasi,odeme-sistemleri" />
+                <p class="description">Virgülle ayrılmış topic slug’ları.</p>
+            </div>
+            <div class="sektorel-coverage-field">
+                <label for="sector_scope">Sector Scope</label>
+                <input id="sector_scope" name="sector_scope" type="text" value="<?php echo esc_attr( implode( ',', (array) $profile['sector_scope'] ) ); ?>" placeholder="finans,multi-sector" />
+                <p class="description">Virgülle ayrılmış sektör kapsam etiketleri; taxonomy enumerasyonu yapmaz.</p>
+            </div>
+        </div>
+
+        <div class="sektorel-coverage-grid">
+            <div class="sektorel-coverage-field">
+                <label for="geography">Geography</label>
+                <input id="geography" name="geography" type="text" value="<?php echo esc_attr( $profile['geography'] ); ?>" placeholder="tr-national" />
+                <p class="description">Örn. tr-national, tr-istanbul, global. Location taxonomy yüklenmez.</p>
+            </div>
+            <div class="sektorel-coverage-field">
+                <label for="detail_strategy">Detail Strategy</label>
+                <select id="detail_strategy" name="detail_strategy">
+                    <?php foreach ( $detail_strategies as $key => $label ) : ?>
+                        <option value="<?php echo esc_attr( $key ); ?>" <?php selected( $profile['detail_strategy'], $key ); ?>><?php echo esc_html( $label ); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+        </div>
+
+        <div class="sektorel-coverage-grid">
+            <div class="sektorel-coverage-field">
+                <label for="image_policy">Image Policy</label>
+                <select id="image_policy" name="image_policy">
+                    <?php foreach ( $image_policies as $key => $label ) : ?>
+                        <option value="<?php echo esc_attr( $key ); ?>" <?php selected( $profile['image_policy'], $key ); ?>><?php echo esc_html( $label ); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="sektorel-coverage-field">
+                <label>Etkin Profil</label>
+                <div class="sektorel-content-source-readonly"><code><?php echo esc_html( $source_key ?: 'source-key-yok' ); ?></code></div>
+                <p class="description">Kaydedilen değerler registry default’unu bu kaynak için override eder.</p>
+            </div>
+        </div>
+        <?php
+    }
+
     public static function save_source( $post_id, $post ) {
         if ( ! isset( $_POST['sektorel_content_source_nonce'] ) ||
             ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['sektorel_content_source_nonce'] ) ), 'sektorel_content_source_save' ) ) {
@@ -207,8 +319,27 @@ class Sektorel_Content_Source_Admin {
             $scan_interval = 'manual';
         }
 
-        $category_slugs = isset( $_POST['category_slugs'] ) ? (string) wp_unslash( $_POST['category_slugs'] ) : '';
-        $category_slugs = implode( ',', array_filter( array_map( 'sanitize_title', array_map( 'trim', explode( ',', $category_slugs ) ) ) ) );
+        $category_slugs = isset( $_POST['category_slugs'] ) ? self::sanitize_slug_csv( wp_unslash( $_POST['category_slugs'] ) ) : '';
+
+        $primary_desk = isset( $_POST['primary_desk'] ) ? sanitize_title( wp_unslash( $_POST['primary_desk'] ) ) : '';
+        if ( ! array_key_exists( $primary_desk, self::primary_desk_options() ) ) {
+            $primary_desk = '';
+        }
+
+        $source_tier = isset( $_POST['source_tier'] ) ? sanitize_key( wp_unslash( $_POST['source_tier'] ) ) : 'd';
+        if ( ! in_array( $source_tier, Sektorel_Content_Source_Policy::source_tiers(), true ) ) {
+            $source_tier = 'd';
+        }
+
+        $detail_strategy = isset( $_POST['detail_strategy'] ) ? sanitize_key( wp_unslash( $_POST['detail_strategy'] ) ) : Sektorel_Content_Source_Policy::DETAIL_FEED_ONLY;
+        if ( ! in_array( $detail_strategy, Sektorel_Content_Source_Policy::detail_strategies(), true ) ) {
+            $detail_strategy = Sektorel_Content_Source_Policy::DETAIL_FEED_ONLY;
+        }
+
+        $image_policy = isset( $_POST['image_policy'] ) ? sanitize_key( wp_unslash( $_POST['image_policy'] ) ) : Sektorel_Content_Source_Policy::IMAGE_PEXELS_ONLY;
+        if ( ! in_array( $image_policy, Sektorel_Content_Source_Policy::image_policies(), true ) ) {
+            $image_policy = Sektorel_Content_Source_Policy::IMAGE_PEXELS_ONLY;
+        }
 
         $meta = array(
             'source_key'         => $source_key,
@@ -225,7 +356,18 @@ class Sektorel_Content_Source_Admin {
             'ai_enabled'         => isset( $_POST['ai_enabled'] ) ? '1' : '0',
             'max_items_per_scan' => isset( $_POST['max_items_per_scan'] ) ? max( 1, min( 200, absint( $_POST['max_items_per_scan'] ) ) ) : 20,
             'max_ai_items_daily' => isset( $_POST['max_ai_items_daily'] ) ? min( 500, absint( $_POST['max_ai_items_daily'] ) ) : 20,
+            'primary_desk'       => $primary_desk,
+            'topic_scope'        => isset( $_POST['topic_scope'] ) ? self::sanitize_slug_csv( wp_unslash( $_POST['topic_scope'] ) ) : '',
+            'sector_scope'       => isset( $_POST['sector_scope'] ) ? self::sanitize_slug_csv( wp_unslash( $_POST['sector_scope'] ) ) : '',
+            'geography'          => isset( $_POST['geography'] ) ? sanitize_title( wp_unslash( $_POST['geography'] ) ) : 'unspecified',
+            'source_tier'        => $source_tier,
+            'detail_strategy'    => $detail_strategy,
+            'image_policy'       => $image_policy,
         );
+
+        if ( '' === $meta['geography'] ) {
+            $meta['geography'] = 'unspecified';
+        }
 
         foreach ( $meta as $key => $value ) {
             update_post_meta( $post_id, $key, $value );
@@ -240,6 +382,7 @@ class Sektorel_Content_Source_Admin {
             'source_type'   => 'Tip',
             'role'          => 'Rol',
             'trust_level'   => 'Güven',
+            'source_tier'   => 'Tier',
             'enabled'       => 'Durum',
             'last_scan'     => 'Son Tarama',
             'date'          => 'Eklenme',
@@ -251,6 +394,11 @@ class Sektorel_Content_Source_Admin {
             case 'enabled':
                 echo '1' === (string) get_post_meta( $post_id, 'enabled', true ) ? 'Aktif' : 'Pasif';
                 break;
+            case 'source_tier':
+                $source_key = sanitize_key( (string) get_post_meta( $post_id, 'source_key', true ) );
+                $tier = Sektorel_Content_Source_Policy::source_tier( $source_key, $post_id );
+                echo $tier ? esc_html( strtoupper( $tier ) ) : '—';
+                break;
             case 'source_key':
             case 'source_type':
             case 'role':
@@ -260,5 +408,26 @@ class Sektorel_Content_Source_Admin {
                 echo $value ? esc_html( $value ) : '—';
                 break;
         }
+    }
+
+    private static function primary_desk_options() {
+        return array(
+            ''                            => 'Geniş kaynak / deterministik triage belirlesin',
+            'sirketler-yatirimlar'        => 'Şirketler',
+            'sanayi-uretim'               => 'Sanayi & Üretim',
+            'kobi-girisimcilik'           => 'KOBİ & Girişim',
+            'teknoloji-dijital-donusum'   => 'Teknoloji & Dijital Dönüşüm',
+            'finans-bankacilik'           => 'Finansman',
+            'dis-ticaret-ihracat'         => 'İhracat & Dış Ticaret',
+            'mevzuat-tesvikler'           => 'Teşvik & Mevzuat',
+            'istihdam-insan-kaynaklari'   => 'İnsan & Yönetim',
+            'ekonomi-piyasalar'           => 'Ekonomi & Piyasalar',
+        );
+    }
+
+    private static function sanitize_slug_csv( $value ) {
+        $items = array_map( 'trim', explode( ',', (string) $value ) );
+        $items = array_filter( array_map( 'sanitize_title', $items ) );
+        return implode( ',', array_values( array_unique( $items ) ) );
     }
 }
