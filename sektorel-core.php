@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Sektorel Core
  * Description: Sektörel Ajanda projesi için CPT, Taxonomy ve API tanımlarını içeren çekirdek eklenti.
- * Version: 1.71.1
+ * Version: 1.71.0
  * Author: Sektörel Ajanda Dev Team
  * Text Domain: sektorel-core
  */
@@ -220,7 +220,7 @@ class Sektorel_Core {
             'includes/admin/class-event-candidate-filter-safety.php',
             'includes/admin/class-event-candidate-html-container-filter.php',
             'includes/admin/class-event-candidate-html-stale-filter.php',
-            'includes/admin/class-event-html-time-proximity.php',
+            'includes/admin/class-event-candidate-html-time-proximity.php',
             'includes/admin/class-event-candidate-html.php',
             'includes/admin/class-event-html-scan-observability.php',
             'includes/admin/class-event-html-new-candidate-panel.php',
@@ -273,7 +273,7 @@ class Sektorel_Core {
         Sektorel_Event_Candidate_Filter_Safety::init();
         Sektorel_Event_Candidate_HTML_Container_Filter::init();
         Sektorel_Event_Candidate_HTML_Stale_Filter::init();
-        Sektorel_Event_HTML_Time_Proximity::init();
+        Sektorel_Event_Candidate_HTML_Time_Proximity::init();
         Sektorel_Event_Candidate_HTML::init();
         Sektorel_Event_HTML_Scan_Observability::init();
         Sektorel_Event_HTML_New_Candidate_Panel::init();
