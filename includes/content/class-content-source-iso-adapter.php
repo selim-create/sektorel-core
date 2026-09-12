@@ -7,9 +7,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Deterministic first-page adapter for İstanbul Sanayi Odası news.
  *
- * The audited listing renders each news item inside <li class="clearfix"> with
- * a nested .list-content block, one canonical /haberler/{section}/{slug}/ link,
- * an explicit dd.mm.yyyy publication date, summary paragraph and source image.
+ * The audited listing renders each news item inside #innerContent > ul.content-list
+ * > li.clearfix with a nested .list-content block, one canonical
+ * /haberler/{section}/{slug}/ link, an explicit dd.mm.yyyy publication date,
+ * summary paragraph and source image.
  */
 class Sektorel_Content_Source_ISO_Adapter {
 
@@ -28,18 +29,21 @@ class Sektorel_Content_Source_ISO_Adapter {
             return new WP_Error( 'unsafe_listing_url', 'İSO haber liste URL resmi host allowlist ile eşleşmiyor.' );
         }
 
+        // Production diagnostics showed that ISO serves the current first-page
+        // news list to the simple bot signature below, while the browser-like
+        // Mozilla + Referer/Cache-Control request can return a stale archive
+        // variant. Keep the request fingerprint aligned with the audited current
+        // response and avoid adding headers that alter the upstream variant.
         $response = wp_safe_remote_get(
             $url,
             array(
                 'timeout'             => self::TIMEOUT,
                 'redirection'         => 3,
                 'limit_response_size' => self::MAX_BODY_SIZE,
-                'user-agent'          => 'Mozilla/5.0 (compatible; SektorelAjandaContentBot/1.2; +' . home_url( '/' ) . ')',
+                'user-agent'          => 'SektorelAjandaContentBot/1.2',
                 'headers'             => array(
-                    'Accept'          => 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.2',
-                    'Accept-Language' => 'tr-TR,tr;q=0.9,en;q=0.5',
-                    'Referer'         => 'https://www.iso.org.tr/',
-                    'Cache-Control'   => 'no-cache',
+                    'Accept'          => 'text/html,application/xhtml+xml',
+                    'Accept-Language' => 'tr-TR,tr;q=0.9',
                 ),
             )
         );
@@ -77,10 +81,12 @@ class Sektorel_Content_Source_ISO_Adapter {
         }
 
         $xpath = new DOMXPath( $dom );
-        $cards = $xpath->query( '//li[contains(concat(" ", normalize-space(@class), " "), " clearfix ")]' );
+        $cards = $xpath->query(
+            '//*[@id="innerContent"]/ul[contains(concat(" ", normalize-space(@class), " "), " content-list ")]/li[contains(concat(" ", normalize-space(@class), " "), " clearfix ")]'
+        );
 
         if ( ! $cards || ! $cards->length ) {
-            return new WP_Error( 'custom_source_no_items', 'İSO haber listesinde li.clearfix haber kartı bulunamadı.' );
+            return new WP_Error( 'custom_source_no_items', 'İSO güncel haber listesinde #innerContent > ul.content-list > li.clearfix kartı bulunamadı.' );
         }
 
         $items = array();
@@ -190,13 +196,13 @@ class Sektorel_Content_Source_ISO_Adapter {
                     'published'   => $date_raw,
                     'summary'     => $summary,
                     'lead_image'  => esc_url_raw( $image_url ),
-                    'card_scope'  => 'li.clearfix > div.list-content',
+                    'card_scope'  => '#innerContent > ul.content-list > li.clearfix > div.list-content',
                 ),
             );
         }
 
         if ( ! $items ) {
-            return new WP_Error( 'custom_source_no_items', 'İSO haber listesinde tarih, özet ve canonical detay URL kontrolünü geçen güvenilir kayıt bulunamadı.' );
+            return new WP_Error( 'custom_source_no_items', 'İSO güncel haber listesinde tarih, özet ve canonical detay URL kontrolünü geçen güvenilir kayıt bulunamadı.' );
         }
 
         $deduped = array();
