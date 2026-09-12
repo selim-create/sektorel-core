@@ -18,6 +18,7 @@ class Sektorel_Content_Editorial_Architecture {
     const MIGRATION_VERSION = 2;
     const OPTION_KEY = 'sektorel_content_editorial_architecture_version';
     const NOTICE_KEY = 'sektorel_content_editorial_architecture_notice';
+    const MIN_ROUTING_SCORE = 3;
 
     public static function init() {
         if ( ! is_admin() ) {
@@ -152,8 +153,7 @@ class Sektorel_Content_Editorial_Architecture {
         foreach ( self::weighted_keyword_map() as $slug => $keywords ) {
             $score = 0;
             foreach ( $keywords as $keyword => $weight ) {
-                $needle = self::normalize_text( $keyword );
-                if ( '' !== $needle && false !== mb_strpos( $text, $needle ) ) {
+                if ( self::keyword_matches( $text, $keyword ) ) {
                     $score += max( 1, (int) $weight );
                 }
             }
@@ -170,11 +170,26 @@ class Sektorel_Content_Editorial_Architecture {
                 }
                 return $scores[ $b ] <=> $scores[ $a ];
             } );
-            return (string) array_key_first( $scores );
+
+            $top_slug  = (string) array_key_first( $scores );
+            $top_score = (int) $scores[ $top_slug ];
+            if ( $top_score >= self::MIN_ROUTING_SCORE ) {
+                $top_count = 0;
+                foreach ( $scores as $score ) {
+                    if ( (int) $score !== $top_score ) {
+                        break;
+                    }
+                    $top_count++;
+                }
+                return 1 === $top_count ? $top_slug : '';
+            }
         }
 
+        // A broad source may legitimately cover several desks. If deterministic
+        // text evidence is weak, choosing the first configured desk silently is
+        // worse than sending the candidate to review.
         $fallbacks = self::source_category_slugs( $fallback_slugs );
-        return $fallbacks ? (string) $fallbacks[0] : '';
+        return 1 === count( $fallbacks ) ? (string) $fallbacks[0] : '';
     }
 
     public static function topic_tags_for_text( $text ) {
@@ -183,8 +198,7 @@ class Sektorel_Content_Editorial_Architecture {
 
         foreach ( self::topic_keyword_map() as $tag => $keywords ) {
             foreach ( $keywords as $keyword ) {
-                $needle = self::normalize_text( $keyword );
-                if ( '' !== $needle && false !== mb_strpos( $text, $needle ) ) {
+                if ( self::keyword_matches( $text, $keyword ) ) {
                     $tags[] = sanitize_title( $tag );
                     break;
                 }
@@ -198,13 +212,16 @@ class Sektorel_Content_Editorial_Architecture {
         $text = self::normalize_text( $text );
         $formats = array(
             'interview' => array( 'roportaj', 'soylesi', 'soru cevap' ),
-            'research'  => array( 'arastirma', 'rapor', 'endeks', 'analiz dosyasi' ),
+            'research'  => array(
+                'arastirma', 'arastirma raporu', 'sektor raporu', 'rapor yayimlandi',
+                'raporu yayimlandi', 'endeks', 'analiz dosyasi', 'anket sonuclari', 'arastirma sonuclari',
+            ),
             'guide'     => array( 'rehber', 'nasil yapilir', 'nasil basvurulur' ),
         );
 
         foreach ( $formats as $format => $needles ) {
             foreach ( $needles as $needle ) {
-                if ( false !== mb_strpos( $text, self::normalize_text( $needle ) ) ) {
+                if ( self::keyword_matches( $text, $needle ) ) {
                     return $format;
                 }
             }
@@ -393,7 +410,7 @@ class Sektorel_Content_Editorial_Architecture {
             'teknoloji-dijital-donusum' => array(
                 'yapay zeka' => 6, 'yapay zekâ' => 6, 'dijital dönüşüm' => 5, 'siber güvenlik' => 5,
                 'e-ticaret' => 4, 'yazılım' => 4, 'bulut' => 3, 'erp' => 3, 'ar-ge' => 3, 'arge' => 3,
-                'teknoloji' => 2,
+                'teknoloji' => 3,
             ),
             'finans-bankacilik' => array(
                 'faktoring' => 6, 'leasing' => 6, 'finansman' => 5, 'kredi' => 4, 'ödeme sistemi' => 4,
@@ -416,7 +433,7 @@ class Sektorel_Content_Editorial_Architecture {
             'ekonomi-piyasalar' => array(
                 'para politikası' => 6, 'politika faizi' => 6, 'enflasyon' => 6, 'gsyh' => 5,
                 'cari açık' => 5, 'rezerv' => 4, 'büyüme' => 4, 'döviz' => 3, 'faiz' => 3,
-                'kur' => 2, 'piyasa' => 1, 'tcmb' => 1,
+                'kur' => 3, 'piyasa' => 1, 'tcmb' => 1,
             ),
         );
     }
@@ -431,6 +448,25 @@ class Sektorel_Content_Editorial_Architecture {
             'fintech-odeme' => array( 'fintech', 'ödeme sistemi', 'ödeme teknolojileri' ),
             'e-ihracat' => array( 'e-ihracat', 'mikro ihracat' ),
         );
+    }
+
+    private static function keyword_matches( $text, $keyword ) {
+        $needle = self::normalize_text( $keyword );
+        if ( '' === $needle ) {
+            return false;
+        }
+
+        // Short acronyms/terms such as GES, KUR, OSB and ERP must be whole
+        // tokens. Substring matching made "Bridges" look like GES and
+        // "kurulu" look like the exchange-rate term "kur".
+        if ( mb_strlen( $needle, 'UTF-8' ) <= 3 ) {
+            return 1 === preg_match(
+                '/(?<![\p{L}\p{N}])' . preg_quote( $needle, '/' ) . '(?![\p{L}\p{N}])/u',
+                $text
+            );
+        }
+
+        return false !== mb_strpos( $text, $needle );
     }
 
     private static function normalize_text( $text ) {
