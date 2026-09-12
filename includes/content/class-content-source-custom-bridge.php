@@ -10,6 +10,7 @@ require_once __DIR__ . '/class-content-source-btk-adapter.php';
 require_once __DIR__ . '/class-content-source-tbb-finance-adapter.php';
 require_once __DIR__ . '/class-content-source-csgb-cgm-adapter.php';
 require_once __DIR__ . '/class-content-source-ticaret-ihracat-adapter.php';
+require_once __DIR__ . '/class-content-source-yatirim-destek-adapter.php';
 
 /**
  * Adapter-aware bridge for the existing Content Source Scanner admin actions.
@@ -150,8 +151,9 @@ class Sektorel_Content_Source_Custom_Bridge {
         $tbb_supported = 'tbb_finance_news_html' === $adapter && class_exists( 'Sektorel_Content_Source_TBB_Finance_Adapter' );
         $csgm_supported = 'csgb_cgm_news_html' === $adapter && class_exists( 'Sektorel_Content_Source_CSGM_Adapter' );
         $ticaret_ihracat_supported = 'ticaret_ihracat_news_html' === $adapter && class_exists( 'Sektorel_Content_Source_Ticaret_Ihracat_Adapter' );
+        $yatirim_destek_supported = 'yatirim_destek_updates_html' === $adapter && class_exists( 'Sektorel_Content_Source_Yatirim_Destek_Adapter' );
 
-        if ( 'custom' !== $source_type || ( ! $generic_supported && ! $iso_supported && ! $btk_supported && ! $tbb_supported && ! $csgm_supported && ! $ticaret_ihracat_supported ) ) {
+        if ( 'custom' !== $source_type || ( ! $generic_supported && ! $iso_supported && ! $btk_supported && ! $tbb_supported && ! $csgm_supported && ! $ticaret_ihracat_supported && ! $yatirim_destek_supported ) ) {
             return Sektorel_Content_Source_Scanner::scan_source( $source_id );
         }
 
@@ -227,6 +229,8 @@ class Sektorel_Content_Source_Custom_Bridge {
             $fetched = Sektorel_Content_Source_CSGM_Adapter::fetch_items( $source_id, $max_items );
         } elseif ( 'ticaret_ihracat_news_html' === $adapter ) {
             $fetched = Sektorel_Content_Source_Ticaret_Ihracat_Adapter::fetch_items( $source_id, $max_items );
+        } elseif ( 'yatirim_destek_updates_html' === $adapter ) {
+            $fetched = Sektorel_Content_Source_Yatirim_Destek_Adapter::fetch_items( $source_id, $max_items );
         } else {
             $fetched = Sektorel_Content_Source_Custom_Adapters::fetch_items( $adapter, $source_id, $max_items );
         }
@@ -497,6 +501,33 @@ class Sektorel_Content_Source_Custom_Bridge {
                     'source_tier'        => 'a',
                     'detail_strategy'    => 'detail_page_required',
                     'image_policy'       => 'source_preferred',
+                ),
+            ),
+            array(
+                'source_key' => 'yatirim_destek_updates',
+                'title'      => 'Yatırıma Destek — Güncellenen Devlet Destekleri',
+                'meta'       => array(
+                    'source_key'         => 'yatirim_destek_updates',
+                    'base_url'           => 'https://www.yatirimadestek.gov.tr/',
+                    'feed_url'           => 'https://www.yatirimadestek.gov.tr/gelismis-arama',
+                    'source_type'        => 'custom',
+                    'adapter'            => 'yatirim_destek_updates_html',
+                    'role'               => 'trusted_official_aggregator',
+                    'trust_level'        => 'high',
+                    'language'           => 'tr',
+                    'category_slugs'     => 'mevzuat-tesvikler',
+                    'scan_interval'      => 'manual',
+                    'enabled'            => '1',
+                    'ai_enabled'         => '0',
+                    'max_items_per_scan' => '20',
+                    'max_ai_items_daily' => '0',
+                    'primary_desk'       => 'mevzuat-tesvikler',
+                    'topic_scope'        => 'tesvikler,devlet-destekleri,hibe,kredi,vergi-istisna,yatirim-destekleri',
+                    'sector_scope'       => 'multi-sector',
+                    'geography'          => 'tr-national',
+                    'source_tier'        => 'b',
+                    'detail_strategy'    => 'feed_only',
+                    'image_policy'       => 'none',
                 ),
             ),
         );
