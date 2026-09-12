@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Sektorel Core
  * Description: Sektörel Ajanda projesi için CPT, Taxonomy ve API tanımlarını içeren çekirdek eklenti.
- * Version: 1.74.0
+ * Version: 1.74.1
  * Author: Sektörel Ajanda Dev Team
  * Text Domain: sektorel-core
  */
@@ -142,12 +142,24 @@ class Sektorel_Core {
             return $scope;
         }
 
-        $page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
-        $post_type = isset( $_GET['post_type'] ) ? sanitize_key( wp_unslash( $_GET['post_type'] ) ) : '';
+        // Classic post.php updates submit post_type/post_ID via POST. Reading
+        // request-scoped values here keeps the scoped admin modules available for
+        // their save hooks without booting them on unrelated Dashboard requests.
+        $page = isset( $_REQUEST['page'] ) ? sanitize_key( wp_unslash( $_REQUEST['page'] ) ) : '';
+        $post_type = isset( $_REQUEST['post_type'] ) ? sanitize_key( wp_unslash( $_REQUEST['post_type'] ) ) : '';
 
-        if ( ! $post_type && ! empty( $_GET['post'] ) ) {
-            $post_type = get_post_type( absint( $_GET['post'] ) );
-            $post_type = $post_type ? sanitize_key( $post_type ) : '';
+        if ( ! $post_type ) {
+            $post_id = 0;
+            if ( ! empty( $_REQUEST['post'] ) ) {
+                $post_id = absint( $_REQUEST['post'] );
+            } elseif ( ! empty( $_REQUEST['post_ID'] ) ) {
+                $post_id = absint( $_REQUEST['post_ID'] );
+            }
+
+            if ( $post_id ) {
+                $post_type = get_post_type( $post_id );
+                $post_type = $post_type ? sanitize_key( $post_type ) : '';
+            }
         }
 
         $scope['demo'] = 'sektorel-demo-import' === $page;
