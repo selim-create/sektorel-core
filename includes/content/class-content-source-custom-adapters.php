@@ -65,52 +65,58 @@ class Sektorel_Content_Source_Custom_Adapters {
     }
 
     private static function parse_kosgeb_news( $html, $listing_url, $limit ) {
-        $dom = self::load_dom( $html );
-        if ( is_wp_error( $dom ) ) {
-            return $dom;
+        $html = self::normalize_html_encoding( $html );
+        if ( is_wp_error( $html ) ) {
+            return $html;
         }
 
-        $groups = self::collect_link_groups(
-            $dom,
-            $listing_url,
-            '~/site/tr/genel/detay/(\d+)/[^?#]+~i'
-        );
-
-        // Some KOSGEB responses mix www/non-www hosts or root-relative paths.
-        // If DOM grouping is empty, recover only official detail URLs from raw HTML.
-        if ( ! $groups ) {
-            $groups = self::collect_kosgeb_raw_groups( $html, $listing_url );
+        // KOSGEB's audited listing response is valid UTF-8 before DOM parsing and
+        // exposes each real news item inside an <article class="post hentry"> card.
+        // Parse only those cards from the raw response so conflicting charset meta
+        // declarations elsewhere in the document can never corrupt Turkish text or
+        // widen the scope to navigation/detail links outside the news listing.
+        if ( ! preg_match_all(
+            '#<article\b[^>]*class\s*=\s*(["\'])([^"\']*\bpost\b[^"\']*\bhentry\b[^"\']*)\1[^>]*>(.*?)</article>#isu',
+            $html,
+            $cards,
+            PREG_SET_ORDER
+        ) ) {
+            return new WP_Error( 'custom_source_no_items', 'KOSGEB haber listesinde gerçek haber kartı bulunamadı.' );
         }
 
         $items = array();
-        foreach ( $groups as $url => $group ) {
-            if ( ! preg_match( '~/site/tr/genel/detay/(\d+)/~i', $url, $match ) ) {
+        foreach ( $cards as $card_match ) {
+            $card = (string) ( $card_match[3] ?? '' );
+            if ( ! $card ) {
                 continue;
             }
 
-            $title_anchor = self::best_title_anchor( $group['anchors'] ?? array() );
-            $title        = $title_anchor ? self::clean_text( $title_anchor->textContent, 1000 ) : '';
-            $context      = '';
-
-            if ( $title_anchor ) {
-                $container = self::compact_container( $title_anchor, $title );
-                $context   = $container ? self::clean_text( $container->textContent, 5000 ) : $title;
-            } elseif ( ! empty( $group['context'] ) ) {
-                $context = self::clean_text( $group['context'], 5000 );
-                $title   = self::title_from_context( $context );
-            }
-
-            if ( mb_strlen( $title, 'UTF-8' ) < 8 ) {
+            if ( ! preg_match(
+                '#<h4\b[^>]*class\s*=\s*(["\'])[^"\']*\bcontent-title\b[^"\']*\1[^>]*>.*?<a\b[^>]*href\s*=\s*(["\'])([^"\']*?/site/tr/genel/detay/(\d+)/[^"\']+)\2[^>]*>(.*?)</a>#isu',
+                $card,
+                $match
+            ) ) {
                 continue;
             }
 
+            $url = self::resolve_url(
+                html_entity_decode( (string) $match[3], ENT_QUOTES | ENT_HTML5, 'UTF-8' ),
+                $listing_url
+            );
+            if ( ! $url || ! self::is_allowed_url( $url, self::allowed_hosts( 'kosgeb_news_html' ) ) ) {
+                continue;
+            }
+
+            $title     = self::clean_text( $match[5], 1000 );
+            $context   = self::clean_text( $card, 5000 );
             $date_raw  = self::extract_turkish_date( $context );
             $published = self::normalize_date( $date_raw );
             $summary   = self::summary_from_context( $context, $title, $date_raw );
 
-            // KOSGEB list acceptance is fail-closed: a real news card must carry
-            // both an explicit publication date and a non-trivial summary.
+            // Fail closed: every accepted KOSGEB card must have a real title,
+            // explicit listing date, meaningful summary and clean UTF-8 text.
             if (
+                mb_strlen( $title, 'UTF-8' ) < 8 ||
                 ! $date_raw ||
                 ! $published ||
                 mb_strlen( $summary, 'UTF-8' ) < 20 ||
@@ -121,7 +127,7 @@ class Sektorel_Content_Source_Custom_Adapters {
             }
 
             $items[] = array(
-                'source_item_key' => 'kosgeb:' . absint( $match[1] ),
+                'source_item_key' => 'kosgeb:' . absint( $match[4] ),
                 'title'           => $title,
                 'url'             => esc_url_raw( $url ),
                 'published_at'    => $published,
@@ -129,15 +135,16 @@ class Sektorel_Content_Source_Custom_Adapters {
                 'date_source'     => 'listing_turkish_date',
                 'raw_payload'     => array(
                     'listing_url' => esc_url_raw( $listing_url ),
-                    'detail_id'   => absint( $match[1] ),
+                    'detail_id'   => absint( $match[4] ),
                     'title'       => $title,
                     'published'   => $date_raw,
                     'summary'     => $summary,
+                    'card_scope'  => 'article.post.hentry',
                 ),
             );
         }
 
-        return self::finalize_items( $items, $limit, 'KOSGEB haber listesinde tarih, özet ve UTF-8 kalite kontrolünü geçen güvenilir kayıt bulunamadı.' );
+        return self::finalize_items( $items, $limit, 'KOSGEB haber listesinde tarih, özet ve UTF-8 kalite kontrolünü geçen güvenilir haber kartı bulunamadı.' );
     }
 
     private static function parse_sanayi_news( $html, $listing_url, $limit ) {
