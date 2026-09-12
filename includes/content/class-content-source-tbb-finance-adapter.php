@@ -116,6 +116,7 @@ class Sektorel_Content_Source_TBB_Finance_Adapter {
                 ! $published ||
                 mb_strlen( $summary, 'UTF-8' ) < 40 ||
                 ! $signal ||
+                self::is_broad_stream_item( $title ) ||
                 self::looks_mojibaked( $title ) ||
                 self::looks_mojibaked( $summary )
             ) {
@@ -250,6 +251,34 @@ class Sektorel_Content_Source_TBB_Finance_Adapter {
         }
 
         return '';
+    }
+
+    /**
+     * The TBB stream mixes finance coverage with institutional visits, generic
+     * banking seminars and training/event announcements. These audited title
+     * patterns fail closed even if a strong finance phrase appears incidentally
+     * later in the card description.
+     */
+    private static function is_broad_stream_item( $title ) {
+        $title = self::normalize_match_text( $title );
+        $patterns = array(
+            'ziyaret etti',
+            'kabul etti',
+            'bankacilik sektoru anlatildi',
+            'ekonomi sohbetleri',
+            'egitim profesyonellerine',
+            'ceza hukuku',
+            'sertifikasyon egitim programi',
+            'bir araya geldi',
+        );
+
+        foreach ( $patterns as $pattern ) {
+            if ( false !== strpos( $title, $pattern ) ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static function extract_numeric_date( $text ) {
