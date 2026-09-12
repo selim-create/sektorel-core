@@ -120,7 +120,7 @@ class Sektorel_Content_Source_ISO_Adapter {
                         continue;
                     }
                     $path = (string) wp_parse_url( $resolved, PHP_URL_PATH );
-                    if ( ! preg_match( '#^/haberler/([^/?#]+)/([^/?#]+)/?$#i', $path, $match ) ) {
+                    if ( ! preg_match( '~^/haberler/([^/?#]+)/([^/?#]+)/?$~i', $path, $match ) ) {
                         continue;
                     }
                     $detail_url  = $resolved;
