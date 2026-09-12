@@ -82,6 +82,7 @@ class Sektorel_Content_Source_Ticaret_Ihracat_Adapter {
         $seen            = array();
         $detail_attempts = 0;
         $detail_cap      = min( 30, max( 14, $limit + 8 ) );
+        $current_year    = (int) current_time( 'Y' );
 
         foreach ( $cards as $card ) {
             if ( count( $items ) >= $limit || $detail_attempts >= $detail_cap ) {
@@ -136,6 +137,13 @@ class Sektorel_Content_Source_Ticaret_Ihracat_Adapter {
                 continue;
             }
 
+            // Source Coverage scans intentionally ingest only the current
+            // publication year. The listing carries a long historical backlog;
+            // never let a normal scan create stale candidates from prior years.
+            if ( (int) substr( $published, 0, 4 ) !== $current_year ) {
+                continue;
+            }
+
             $path = (string) wp_parse_url( $detail_url, PHP_URL_PATH );
             if ( ! preg_match( '~^/haberler/([^/?#]+)/?$~i', $path, $match ) ) {
                 continue;
@@ -169,6 +177,7 @@ class Sektorel_Content_Source_Ticaret_Ihracat_Adapter {
                     'detail_header'     => 'div.__header.with-image',
                     'detail_scope'      => 'div.__zone div.__content',
                     'detail_host'       => 'ticaret.gov.tr',
+                    'current_year_gate' => $current_year,
                     'listing_date_used' => false,
                     'url_date_used'     => false,
                 ),
@@ -178,7 +187,7 @@ class Sektorel_Content_Source_Ticaret_Ihracat_Adapter {
         if ( ! $items ) {
             return new WP_Error(
                 'custom_source_no_items',
-                'İhracat haber listesinde canonical detail, görünür tarih ve dış ticaret konu kontrolünü geçen güvenilir kayıt bulunamadı.'
+                'İhracat haber listesinde current-year, canonical detail, görünür tarih ve dış ticaret konu kontrolünü geçen güvenilir kayıt bulunamadı.'
             );
         }
 
