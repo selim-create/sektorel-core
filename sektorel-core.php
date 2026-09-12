@@ -90,6 +90,15 @@ class Sektorel_Core {
             ( is_string( $request_path ) && 'wp-login.php' === basename( $request_path ) );
     }
 
+    /**
+     * Keep the ordinary authenticated Dashboard lightweight.
+     *
+     * Before 1.69.4 every wp-admin request initialized the complete company,
+     * content and event operations tree. 1.69.6 additionally removes candidate,
+     * category-foundation, ranking and event-module initialization from unrelated
+     * Dashboard requests. Operational groups now boot only for their own screens
+     * or Sektorel AJAX/admin-post actions.
+     */
     private function bootstrap_admin() {
         require_once SEKTOREL_CORE_PATH . 'includes/core/class-core-settings.php';
         require_once SEKTOREL_CORE_PATH . 'includes/admin/class-core-console.php';
@@ -133,6 +142,9 @@ class Sektorel_Core {
             return $scope;
         }
 
+        // Classic post.php updates submit post_type/post_ID via POST. Reading
+        // request-scoped values here keeps the scoped admin modules available for
+        // their save hooks without booting them on unrelated Dashboard requests.
         $page = isset( $_REQUEST['page'] ) ? sanitize_key( wp_unslash( $_REQUEST['page'] ) ) : '';
         $post_type = isset( $_REQUEST['post_type'] ) ? sanitize_key( wp_unslash( $_REQUEST['post_type'] ) ) : '';
 
