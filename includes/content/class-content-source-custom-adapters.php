@@ -73,7 +73,7 @@ class Sektorel_Content_Source_Custom_Adapters {
         $groups = self::collect_link_groups(
             $dom,
             $listing_url,
-            '#/site/tr/genel/detay/(\d+)/[^?#]+#i'
+            '~/site/tr/genel/detay/(\d+)/[^?#]+~i'
         );
 
         // Some KOSGEB responses mix www/non-www hosts or root-relative paths.
@@ -84,7 +84,7 @@ class Sektorel_Content_Source_Custom_Adapters {
 
         $items = array();
         foreach ( $groups as $url => $group ) {
-            if ( ! preg_match( '#/site/tr/genel/detay/(\d+)/#i', $url, $match ) ) {
+            if ( ! preg_match( '~/site/tr/genel/detay/(\d+)/~i', $url, $match ) ) {
                 continue;
             }
 
@@ -108,13 +108,19 @@ class Sektorel_Content_Source_Custom_Adapters {
             $published = self::normalize_date( $date_raw );
             $summary   = self::summary_from_context( $context, $title, $date_raw );
 
+            // KOSGEB list acceptance is fail-closed: a real news card must carry
+            // both an explicit publication date and a non-trivial summary.
+            if ( ! $date_raw || ! $published || mb_strlen( $summary, 'UTF-8' ) < 20 ) {
+                continue;
+            }
+
             $items[] = array(
                 'source_item_key' => 'kosgeb:' . absint( $match[1] ),
                 'title'           => $title,
                 'url'             => esc_url_raw( $url ),
                 'published_at'    => $published,
                 'summary'         => $summary,
-                'date_source'     => $date_raw ? 'listing_turkish_date' : '',
+                'date_source'     => 'listing_turkish_date',
                 'raw_payload'     => array(
                     'listing_url' => esc_url_raw( $listing_url ),
                     'detail_id'   => absint( $match[1] ),
@@ -125,7 +131,7 @@ class Sektorel_Content_Source_Custom_Adapters {
             );
         }
 
-        return self::finalize_items( $items, $limit, 'KOSGEB haber listesinde güvenilir kayıt bulunamadı.' );
+        return self::finalize_items( $items, $limit, 'KOSGEB haber listesinde tarih ve özet taşıyan güvenilir kayıt bulunamadı.' );
     }
 
     private static function parse_sanayi_news( $html, $listing_url, $limit ) {
@@ -137,7 +143,7 @@ class Sektorel_Content_Source_Custom_Adapters {
         $groups = self::collect_link_groups(
             $dom,
             $listing_url,
-            '#/medya/(?:haber|haber-detayi|haberleri)/[^/?#]+/?(?:[?#].*)?$#i'
+            '~/medya/(?:haber|haber-detayi|haberleri)/[^/?#]+/?(?:[?#].*)?$~i'
         );
 
         $items = array();
@@ -540,10 +546,27 @@ class Sektorel_Content_Admin_Navigation_Fix {
         if ( ! is_admin() ) {
             return;
         }
+        add_action( 'admin_init', array( __CLASS__, 'redirect_legacy_content_center' ), 1 );
         add_action( 'admin_menu', array( __CLASS__, 'register_core_entry' ), 998 );
         add_filter( 'parent_file', array( __CLASS__, 'parent_file' ) );
         add_filter( 'submenu_file', array( __CLASS__, 'submenu_file' ) );
         add_action( 'admin_notices', array( __CLASS__, 'scan_error_notice' ), 20 );
+    }
+
+    public static function redirect_legacy_content_center() {
+        global $pagenow;
+
+        $page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+        if ( 'edit.php' !== $pagenow || 'sektorel-content-source-center' !== $page || headers_sent() ) {
+            return;
+        }
+
+        $args = $_GET;
+        unset( $args['post_type'] );
+        $args['page'] = 'sektorel-content-source-center';
+
+        wp_safe_redirect( add_query_arg( array_map( 'sanitize_text_field', wp_unslash( $args ) ), admin_url( 'admin.php' ) ) );
+        exit;
     }
 
     public static function register_core_entry() {
