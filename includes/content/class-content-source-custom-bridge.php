@@ -306,7 +306,7 @@ class Sektorel_Content_Source_Custom_Bridge {
                 'meta'       => array(
                     'source_key'         => 'kosgeb_news',
                     'base_url'           => 'https://www.kosgeb.gov.tr/',
-                    'feed_url'           => 'https://www.kosgeb.gov.tr/site/tr/genel/liste/4/haberler?Page=1',
+                    'feed_url'           => 'https://www.kosgeb.gov.tr/site/tr/genel/liste/4/haber?Page=1',
                     'source_type'        => 'custom',
                     'adapter'            => 'kosgeb_news_html',
                     'role'               => 'official',
