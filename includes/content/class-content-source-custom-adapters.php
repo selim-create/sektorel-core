@@ -246,26 +246,29 @@ class Sektorel_Content_Source_Custom_Adapters {
             return $html;
         }
 
-        // libxml's HTML parser can reinterpret valid UTF-8 as a legacy single-byte
-        // encoding when a source carries conflicting/late charset metadata. Encoding
-        // non-ASCII code points as numeric entities makes the DOM parse deterministic
-        // without altering tags, URLs or ASCII attributes.
-        if ( function_exists( 'mb_encode_numericentity' ) ) {
-            $html = mb_encode_numericentity(
-                $html,
-                array( 0x80, 0x10FFFF, 0, 0xFFFFFF ),
-                'UTF-8'
-            );
+        // The audited KOSGEB response is valid UTF-8 at the HTTP/body level but
+        // contains conflicting legacy charset declarations. libxml can honor one
+        // of those later declarations and reinterpret already-valid UTF-8 bytes.
+        // Charset metadata is irrelevant to our extraction, so remove it and use
+        // one explicit XML UTF-8 declaration for deterministic DOM decoding.
+        $html = preg_replace( '/<meta\b[^>]*>/i', '', $html );
+        $html = preg_replace( '/<\?xml\b[^>]*\?>/i', '', $html );
+        if ( null === $html ) {
+            return new WP_Error( 'invalid_source_html', 'Kaynak HTML charset metadata temizliği başarısız oldu.' );
         }
 
         $previous = libxml_use_internal_errors( true );
-        $dom      = new DOMDocument();
+        $dom      = new DOMDocument( '1.0', 'UTF-8' );
         $loaded   = $dom->loadHTML(
-            '<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">' . $html,
+            '<?xml encoding="UTF-8"?>' . $html,
             LIBXML_NOWARNING | LIBXML_NOERROR | LIBXML_NONET
         );
         libxml_clear_errors();
         libxml_use_internal_errors( $previous );
+
+        if ( $loaded ) {
+            $dom->encoding = 'UTF-8';
+        }
 
         return $loaded ? $dom : new WP_Error( 'invalid_source_html', 'Kaynak HTML ayrıştırılamadı.' );
     }
