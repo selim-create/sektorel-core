@@ -4,6 +4,8 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
+require_once __DIR__ . '/class-content-draft-media.php';
+
 /**
  * Admin-triggered Ready Candidate -> source enrichment -> AI editorial draft.
  * Never publishes posts automatically.
@@ -21,6 +23,7 @@ class Sektorel_Content_AI_Draft_Processor {
             return;
         }
         add_action( 'wp_ajax_sektorel_content_ai_draft_batch', array( __CLASS__, 'ajax_process_batch' ) );
+        add_action( 'wp_ajax_sektorel_content_ai_repair_drafts', array( __CLASS__, 'ajax_repair_recent_drafts' ) );
     }
 
     public static function nonce() {
@@ -84,6 +87,8 @@ class Sektorel_Content_AI_Draft_Processor {
         $drafted = 0;
         $errors = 0;
         $skipped = 0;
+        $images_added = 0;
+        $image_errors = 0;
         $messages = array();
 
         foreach ( $rows as $row ) {
@@ -126,9 +131,19 @@ class Sektorel_Content_AI_Draft_Processor {
                 continue;
             }
 
+            $completion = self::complete_draft( $post_id, $result['article'] );
+            if ( is_wp_error( $completion ) ) {
+                $image_errors++;
+                $messages[] = sprintf( '#%d → draft #%d oluşturuldu; görsel eklenemedi: %s', $candidate_id, $post_id, $completion->get_error_message() );
+            } else {
+                if ( ! empty( $completion['image_added'] ) ) {
+                    $images_added++;
+                }
+                $messages[] = sprintf( '#%d → draft #%d oluşturuldu: %s', $candidate_id, $post_id, get_the_title( $post_id ) );
+            }
+
             self::mark_processed( $candidate_id, $post_id, $result['usage'], $result['article'], 'created' );
             $drafted++;
-            $messages[] = sprintf( '#%d → draft #%d oluşturuldu: %s', $candidate_id, $post_id, get_the_title( $post_id ) );
         }
 
         $remaining = (int) $wpdb->get_var(
@@ -140,15 +155,75 @@ class Sektorel_Content_AI_Draft_Processor {
         );
 
         wp_send_json_success( array(
-            'processed' => count( $rows ),
-            'drafted'   => $drafted,
-            'errors'    => $errors,
-            'skipped'   => $skipped,
-            'remaining' => $remaining,
-            'done'      => 0 === $remaining || self::daily_processed_count() >= self::daily_limit(),
-            'daily_limit' => self::daily_limit(),
-            'daily_used'  => self::daily_processed_count(),
-            'messages'  => $messages,
+            'processed'    => count( $rows ),
+            'drafted'      => $drafted,
+            'errors'       => $errors,
+            'skipped'      => $skipped,
+            'images_added' => $images_added,
+            'image_errors' => $image_errors,
+            'remaining'    => $remaining,
+            'done'         => 0 === $remaining || self::daily_processed_count() >= self::daily_limit(),
+            'daily_limit'  => self::daily_limit(),
+            'daily_used'   => self::daily_processed_count(),
+            'messages'     => $messages,
+        ) );
+    }
+
+    /**
+     * Completes up to five recent AI drafts without spending more AI tokens.
+     * Intended for drafts generated before SEO/media completion was introduced.
+     */
+    public static function ajax_repair_recent_drafts() {
+        check_ajax_referer( self::NONCE_ACTION, 'nonce' );
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( array( 'message' => 'Yetkisiz işlem.' ), 403 );
+        }
+
+        global $wpdb;
+        $table = Sektorel_Content_Candidates::table_name();
+        $rows = $wpdb->get_results(
+            "SELECT * FROM {$table}
+             WHERE status = 'processed'
+               AND ai_status = 'done'
+               AND draft_post_id > 0
+             ORDER BY processed_at DESC, id DESC
+             LIMIT 5",
+            ARRAY_A
+        );
+
+        $repaired = 0;
+        $images_added = 0;
+        $image_errors = 0;
+        $messages = array();
+
+        foreach ( (array) $rows as $row ) {
+            $post_id = absint( $row['draft_post_id'] ?? 0 );
+            if ( ! $post_id || ! get_post( $post_id ) ) {
+                continue;
+            }
+
+            $article = self::article_from_existing_post( $post_id );
+            $completion = self::complete_draft( $post_id, $article );
+            self::backfill_estimated_cost( $row );
+            $repaired++;
+
+            if ( is_wp_error( $completion ) ) {
+                $image_errors++;
+                $messages[] = sprintf( '#%d SEO tamamlandı; görsel eklenemedi: %s', $post_id, $completion->get_error_message() );
+                continue;
+            }
+
+            if ( ! empty( $completion['image_added'] ) ) {
+                $images_added++;
+            }
+            $messages[] = sprintf( '#%d SEO ve medya metadata tamamlandı.', $post_id );
+        }
+
+        wp_send_json_success( array(
+            'repaired'     => $repaired,
+            'images_added' => $images_added,
+            'image_errors' => $image_errors,
+            'messages'     => $messages,
         ) );
     }
 
@@ -177,7 +252,7 @@ class Sektorel_Content_AI_Draft_Processor {
             'source_text'  => $source_text,
         );
 
-        $prompt = "Sektörel Ajanda için Türkçe ekonomi/iş dünyası editörüsün. YALNIZ verilen resmi kaynak metnindeki doğrulanabilir bilgileri kullan. Kaynakta olmayan kişi, rakam, tarih, kurum, alıntı, bağlam veya neden-sonuç ilişkisi uydurma. Belirsiz bilgiyi kesinleştirme. Kaynak metnini kopyalama; anlamı koruyarak özgün, profesyonel haber dilinde yeniden yaz. Sansasyonel dil kullanma. Başlık kısa, açıklayıcı ve clickbait olmayan bir haber başlığı olsun. İçerik HTML olsun ve yalnız p, h2, ul, li, strong etiketlerini kullan. Kaynak URL'sini içerik gövdesine ekleme; sistem meta olarak saklayacak. category_slug yalnız allowed_category_slugs listesinden bir değer olmalı; liste boşsa boş string döndür. tags en fazla 8 kısa Türkçe etiket olsun. seo_description 140-160 karakter aralığında doğal Türkçe meta açıklaması olsun. Yalnız geçerli JSON döndür; markdown/code fence kullanma. JSON şeması: {\"title\":\"...\",\"excerpt\":\"...\",\"content_html\":\"...\",\"category_slug\":\"...\",\"tags\":[\"...\"],\"seo_description\":\"...\"}.\n\nKAYNAK VERİ:\n" . wp_json_encode( $source, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
+        $prompt = "Sektörel Ajanda için Türkçe ekonomi/iş dünyası editörüsün. YALNIZ verilen resmi kaynak metnindeki doğrulanabilir bilgileri kullan. Kaynakta olmayan kişi, rakam, tarih, kurum, alıntı, bağlam veya neden-sonuç ilişkisi uydurma. Belirsiz bilgiyi kesinleştirme. Kaynak metnini kopyalama; anlamı koruyarak özgün, profesyonel haber dilinde yeniden yaz. Sansasyonel dil kullanma. Başlık kısa, açıklayıcı ve clickbait olmayan bir haber başlığı olsun. İçerik HTML olsun ve yalnız p, h2, ul, li, strong etiketlerini kullan. Kaynak URL'sini içerik gövdesine ekleme; sistem meta olarak saklayacak. category_slug yalnız allowed_category_slugs listesinden bir değer olmalı; liste boşsa boş string döndür. tags en fazla 8 kısa Türkçe etiket olsun. seo_description 140-160 karakter aralığında doğal Türkçe meta açıklaması olsun. focus_keyword haberi en iyi tanımlayan tek bir kısa anahtar kelime/kelime grubu olsun ve mümkünse başlıkta doğal biçimde geçsin. image_query Pexels üzerinde temsilî editorial landscape görsel aramak için 2-6 kelimelik genel ve güvenli bir Türkçe sorgu olsun; kişi adı veya kaynakta olmayan spesifik sahne uydurma. Yalnız geçerli JSON döndür; markdown/code fence kullanma. JSON şeması: {\"title\":\"...\",\"excerpt\":\"...\",\"content_html\":\"...\",\"category_slug\":\"...\",\"tags\":[\"...\"],\"seo_description\":\"...\",\"focus_keyword\":\"...\",\"image_query\":\"...\"}.\n\nKAYNAK VERİ:\n" . wp_json_encode( $source, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
 
         $response = wp_remote_post(
             'https://api.openai.com/v1/responses',
@@ -237,6 +312,8 @@ class Sektorel_Content_AI_Draft_Processor {
         $content = wp_kses_post( (string) ( $article['content_html'] ?? '' ) );
         $category = sanitize_title( $article['category_slug'] ?? '' );
         $seo_description = sanitize_text_field( $article['seo_description'] ?? '' );
+        $focus_keyword = sanitize_text_field( $article['focus_keyword'] ?? '' );
+        $image_query = sanitize_text_field( $article['image_query'] ?? '' );
         $tags = array_values( array_unique( array_filter( array_map( 'sanitize_text_field', (array) ( $article['tags'] ?? array() ) ) ) ) );
         $tags = array_slice( $tags, 0, 8 );
 
@@ -250,6 +327,13 @@ class Sektorel_Content_AI_Draft_Processor {
             return new WP_Error( 'content_ai_category_missing', 'AI kategorisi WordPress üzerinde bulunamadı.' );
         }
 
+        if ( '' === $focus_keyword && ! empty( $tags ) ) {
+            $focus_keyword = $tags[0];
+        }
+        if ( '' === $image_query ) {
+            $image_query = $focus_keyword ?: implode( ' ', array_slice( $tags, 0, 3 ) );
+        }
+
         return array(
             'title'           => mb_substr( $title, 0, 220 ),
             'excerpt'         => mb_substr( $excerpt, 0, 500 ),
@@ -257,6 +341,8 @@ class Sektorel_Content_AI_Draft_Processor {
             'category_slug'   => $category,
             'tags'            => $tags,
             'seo_description' => mb_substr( $seo_description, 0, 170 ),
+            'focus_keyword'   => mb_substr( $focus_keyword, 0, 120 ),
+            'image_query'     => mb_substr( $image_query, 0, 120 ),
         );
     }
 
@@ -303,11 +389,99 @@ class Sektorel_Content_AI_Draft_Processor {
         update_post_meta( $post_id, '_sektorel_content_ai_model', self::model() );
         update_post_meta( $post_id, '_sektorel_content_generated_at', current_time( 'mysql', true ) );
         update_post_meta( $post_id, '_sektorel_content_evidence', self::decode_json_array( $row['evidence_json'] ?? '' ) );
-        if ( ! empty( $article['seo_description'] ) ) {
-            update_post_meta( $post_id, 'rank_math_description', $article['seo_description'] );
-        }
 
         return absint( $post_id );
+    }
+
+    private static function complete_draft( $post_id, $article ) {
+        self::apply_rank_math_meta( $post_id, $article );
+
+        $media = Sektorel_Content_Draft_Media::attach_featured_image( $post_id, $article );
+        if ( is_wp_error( $media ) ) {
+            update_post_meta( $post_id, '_sektorel_content_media_status', 'error' );
+            update_post_meta( $post_id, '_sektorel_content_media_error', $media->get_error_message() );
+            return $media;
+        }
+
+        delete_post_meta( $post_id, '_sektorel_content_media_error' );
+        self::apply_rank_math_image_meta( $post_id, absint( $media['attachment_id'] ?? 0 ) );
+
+        return array(
+            'image_added' => 'created' === ( $media['status'] ?? '' ),
+            'media'       => $media,
+        );
+    }
+
+    private static function apply_rank_math_meta( $post_id, $article ) {
+        $title = sanitize_text_field( $article['title'] ?? get_the_title( $post_id ) );
+        $description = sanitize_text_field( $article['seo_description'] ?? '' );
+        if ( '' === $description ) {
+            $description = sanitize_text_field( get_post_field( 'post_excerpt', $post_id ) );
+        }
+
+        $focus_keyword = sanitize_text_field( $article['focus_keyword'] ?? '' );
+        if ( '' === $focus_keyword ) {
+            $tags = wp_get_post_tags( $post_id, array( 'fields' => 'names' ) );
+            if ( ! empty( $tags ) && ! is_wp_error( $tags ) ) {
+                $focus_keyword = sanitize_text_field( $tags[0] );
+            }
+        }
+
+        update_post_meta( $post_id, 'rank_math_title', mb_substr( $title, 0, 220 ) );
+        if ( $description ) {
+            update_post_meta( $post_id, 'rank_math_description', mb_substr( $description, 0, 170 ) );
+        }
+        if ( $focus_keyword ) {
+            update_post_meta( $post_id, 'rank_math_focus_keyword', mb_substr( $focus_keyword, 0, 120 ) );
+        }
+
+        update_post_meta( $post_id, 'rank_math_facebook_title', mb_substr( $title, 0, 220 ) );
+        update_post_meta( $post_id, 'rank_math_facebook_description', mb_substr( $description, 0, 170 ) );
+        update_post_meta( $post_id, 'rank_math_twitter_title', mb_substr( $title, 0, 220 ) );
+        update_post_meta( $post_id, 'rank_math_twitter_description', mb_substr( $description, 0, 170 ) );
+        update_post_meta( $post_id, 'rank_math_twitter_use_facebook', 'on' );
+    }
+
+    private static function apply_rank_math_image_meta( $post_id, $attachment_id ) {
+        if ( ! $attachment_id ) {
+            return;
+        }
+
+        $url = wp_get_attachment_image_url( $attachment_id, 'full' );
+        if ( ! $url ) {
+            return;
+        }
+
+        update_post_meta( $post_id, 'rank_math_facebook_image', esc_url_raw( $url ) );
+        update_post_meta( $post_id, 'rank_math_facebook_image_id', $attachment_id );
+        update_post_meta( $post_id, 'rank_math_twitter_image', esc_url_raw( $url ) );
+        update_post_meta( $post_id, 'rank_math_twitter_image_id', $attachment_id );
+    }
+
+    private static function article_from_existing_post( $post_id ) {
+        $tags = wp_get_post_tags( $post_id, array( 'fields' => 'names' ) );
+        $tags = is_wp_error( $tags ) ? array() : array_values( (array) $tags );
+        $categories = wp_get_post_categories( $post_id, array( 'fields' => 'all' ) );
+        $category_slug = '';
+        if ( ! empty( $categories ) && ! is_wp_error( $categories ) ) {
+            $category_slug = sanitize_title( $categories[0]->slug ?? '' );
+        }
+
+        $focus_keyword = sanitize_text_field( get_post_meta( $post_id, 'rank_math_focus_keyword', true ) );
+        if ( '' === $focus_keyword && ! empty( $tags ) ) {
+            $focus_keyword = sanitize_text_field( $tags[0] );
+        }
+
+        return array(
+            'title'           => sanitize_text_field( get_the_title( $post_id ) ),
+            'excerpt'         => sanitize_textarea_field( get_post_field( 'post_excerpt', $post_id ) ),
+            'content_html'    => wp_kses_post( get_post_field( 'post_content', $post_id ) ),
+            'category_slug'   => $category_slug,
+            'tags'            => $tags,
+            'seo_description' => sanitize_text_field( get_post_meta( $post_id, 'rank_math_description', true ) ),
+            'focus_keyword'   => $focus_keyword,
+            'image_query'     => implode( ' ', array_slice( $tags, 0, 3 ) ),
+        );
     }
 
     private static function find_existing_draft( $candidate_id ) {
@@ -327,14 +501,22 @@ class Sektorel_Content_AI_Draft_Processor {
         global $wpdb;
         $candidate = Sektorel_Content_Candidates::get( $candidate_id );
         $evidence = self::decode_json_array( $candidate['evidence_json'] ?? '' );
+        $input_tokens = absint( $usage['input_tokens'] ?? 0 );
+        $output_tokens = absint( $usage['output_tokens'] ?? 0 );
+        $model = self::model();
+        $estimated_cost = class_exists( 'Sektorel_Core_Settings' )
+            ? Sektorel_Core_Settings::estimate_cost( $model, $input_tokens, $output_tokens )
+            : 0.0;
+
         $evidence['ai_draft'] = array(
-            'status'        => 'created',
-            'mode'          => sanitize_key( $mode ),
-            'post_id'       => absint( $post_id ),
-            'model'         => self::model(),
-            'created_at'    => gmdate( 'c' ),
-            'input_tokens'  => absint( $usage['input_tokens'] ?? 0 ),
-            'output_tokens' => absint( $usage['output_tokens'] ?? 0 ),
+            'status'         => 'created',
+            'mode'           => sanitize_key( $mode ),
+            'post_id'        => absint( $post_id ),
+            'model'          => $model,
+            'created_at'     => gmdate( 'c' ),
+            'input_tokens'   => $input_tokens,
+            'output_tokens'  => $output_tokens,
+            'estimated_cost' => $estimated_cost,
         );
         if ( ! empty( $article['category_slug'] ) ) {
             $evidence['ai_draft']['category_slug'] = sanitize_title( $article['category_slug'] );
@@ -343,20 +525,48 @@ class Sektorel_Content_AI_Draft_Processor {
         $wpdb->update(
             Sektorel_Content_Candidates::table_name(),
             array(
-                'status'           => Sektorel_Content_Candidates::STATUS_PROCESSED,
-                'ai_status'        => 'done',
-                'ai_model'         => self::model(),
-                'ai_input_tokens'  => absint( $usage['input_tokens'] ?? 0 ),
-                'ai_output_tokens' => absint( $usage['output_tokens'] ?? 0 ),
-                'draft_post_id'    => absint( $post_id ),
-                'evidence_json'    => wp_json_encode( $evidence, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ),
-                'error_code'       => '',
-                'error_message'    => '',
-                'processed_at'     => current_time( 'mysql', true ),
-                'updated_at'       => current_time( 'mysql', true ),
+                'status'            => Sektorel_Content_Candidates::STATUS_PROCESSED,
+                'ai_status'         => 'done',
+                'ai_model'          => $model,
+                'ai_input_tokens'   => $input_tokens,
+                'ai_output_tokens'  => $output_tokens,
+                'ai_estimated_cost' => $estimated_cost,
+                'draft_post_id'     => absint( $post_id ),
+                'evidence_json'     => wp_json_encode( $evidence, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ),
+                'error_code'        => '',
+                'error_message'     => '',
+                'processed_at'      => current_time( 'mysql', true ),
+                'updated_at'        => current_time( 'mysql', true ),
             ),
             array( 'id' => absint( $candidate_id ) ),
-            array( '%s', '%s', '%s', '%d', '%d', '%d', '%s', '%s', '%s', '%s', '%s' ),
+            array( '%s', '%s', '%s', '%d', '%d', '%f', '%d', '%s', '%s', '%s', '%s', '%s' ),
+            array( '%d' )
+        );
+    }
+
+    private static function backfill_estimated_cost( $row ) {
+        if ( ! class_exists( 'Sektorel_Core_Settings' ) ) {
+            return;
+        }
+
+        $candidate_id = absint( $row['id'] ?? 0 );
+        if ( ! $candidate_id ) {
+            return;
+        }
+
+        $model = sanitize_text_field( $row['ai_model'] ?? self::model() );
+        $cost = Sektorel_Core_Settings::estimate_cost(
+            $model,
+            absint( $row['ai_input_tokens'] ?? 0 ),
+            absint( $row['ai_output_tokens'] ?? 0 )
+        );
+
+        global $wpdb;
+        $wpdb->update(
+            Sektorel_Content_Candidates::table_name(),
+            array( 'ai_estimated_cost' => $cost ),
+            array( 'id' => $candidate_id ),
+            array( '%f' ),
             array( '%d' )
         );
     }
