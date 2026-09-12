@@ -29,7 +29,11 @@ class Sektorel_Content_Editorial_Policy {
         }
 
         $action = isset( $_REQUEST['action'] ) ? sanitize_key( wp_unslash( $_REQUEST['action'] ) ) : '';
-        if ( 'sektorel_content_ai_draft_batch' !== $action ) {
+        $allowed_actions = array(
+            'sektorel_content_ai_draft_batch',
+            'sektorel_content_ai_reprocess_tobb_drafts',
+        );
+        if ( ! in_array( $action, $allowed_actions, true ) ) {
             return $args;
         }
 

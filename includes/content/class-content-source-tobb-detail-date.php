@@ -12,8 +12,10 @@ require_once __DIR__ . '/class-content-editorial-policy.php';
 require_once __DIR__ . '/class-content-tobb-http-compat.php';
 require_once __DIR__ . '/class-content-detail-extractor.php';
 require_once __DIR__ . '/class-content-ai-draft-processor.php';
+require_once __DIR__ . '/class-content-ai-draft-reprocessor.php';
 require_once dirname( __DIR__ ) . '/core/class-core-settings.php';
 require_once dirname( __DIR__ ) . '/admin/class-content-ai-draft-admin.php';
+require_once dirname( __DIR__ ) . '/admin/class-content-ai-reprocess-admin.php';
 require_once dirname( __DIR__ ) . '/admin/class-core-console.php';
 
 /**
@@ -42,7 +44,9 @@ class Sektorel_Content_Source_TOBB_Detail_Date {
         Sektorel_Content_TOBB_HTTP_Compat::init();
         Sektorel_Content_Source_TOBB_Candidate_Identity::init();
         Sektorel_Content_AI_Draft_Processor::init();
+        Sektorel_Content_AI_Draft_Reprocessor::init();
         Sektorel_Content_AI_Draft_Admin::init();
+        Sektorel_Content_AI_Reprocess_Admin::init();
         Sektorel_Core_Console::init();
 
         // Core 1.69.0 rendered model/limit inputs as disabled whenever the
