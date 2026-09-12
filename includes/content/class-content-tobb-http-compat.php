@@ -162,7 +162,12 @@ class Sektorel_Content_TOBB_HTTP_Compat {
             foreach ( $block['paragraphs'] as $paragraph ) {
                 $fragment .= '<p>' . esc_html( $paragraph ) . '</p>';
             }
-            $fragment .= '</div>';
+
+            // The replaced raw slice also contained the closing tags for
+            // `#subpage-content` and `#left-column`. Restore those boundaries so
+            // DOMDocument cannot re-parent `#right-column` into the article and
+            // leak print-script/page chrome text into the extracted story.
+            $fragment .= '</div></div></div>';
 
             return substr( $html, 0, $block['start'] ) . $fragment . substr( $html, $block['end'] );
         }
