@@ -4,6 +4,9 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
+require_once __DIR__ . '/class-content-source-custom-adapters.php';
+require_once __DIR__ . '/class-content-source-custom-bridge.php';
+
 /**
  * Source Coverage Registry + source-specific policy contract for the Content Engine.
  *
@@ -132,6 +135,8 @@ class Sektorel_Content_Source_Policy {
             'tcmb_press'         => array( 'tcmb.gov.tr', 'www.tcmb.gov.tr' ),
             'tobb_news'          => array( 'tobb.org.tr', 'www.tobb.org.tr' ),
             'tobb_announcements' => array( 'tobb.org.tr', 'www.tobb.org.tr' ),
+            'kosgeb_news'        => array( 'kosgeb.gov.tr', 'www.kosgeb.gov.tr' ),
+            'sanayi_news'        => array( 'sanayi.gov.tr', 'www.sanayi.gov.tr' ),
         );
 
         $allowed = $hosts[ $source_key ] ?? array();
@@ -180,7 +185,7 @@ class Sektorel_Content_Source_Policy {
     }
 
     /**
-     * Initial registry profiles for already-deployed official sources.
+     * Initial registry profiles for deployed and audited official sources.
      *
      * Broad TOBB feeds intentionally have no forced primary desk. Candidate
      * triage must keep failing closed when text evidence is weak.
@@ -212,6 +217,24 @@ class Sektorel_Content_Source_Policy {
                 'geography'       => 'tr-national',
                 'source_tier'     => self::SOURCE_TIER_A,
                 'detail_strategy' => self::DETAIL_PAGE_PREFERRED,
+                'image_policy'    => self::IMAGE_SOURCE_PREFERRED,
+            ),
+            'kosgeb_news' => array(
+                'primary_desk'    => 'kobi-girisimcilik',
+                'topic_scope'     => array( 'kobi', 'girisimcilik', 'destekler' ),
+                'sector_scope'    => array( 'multi-sector' ),
+                'geography'       => 'tr-national',
+                'source_tier'     => self::SOURCE_TIER_A,
+                'detail_strategy' => self::DETAIL_PAGE_REQUIRED,
+                'image_policy'    => self::IMAGE_SOURCE_PREFERRED,
+            ),
+            'sanayi_news' => array(
+                'primary_desk'    => 'sanayi-uretim',
+                'topic_scope'     => array( 'imalat-sanayi', 'yatirim', 'osb' ),
+                'sector_scope'    => array( 'multi-sector' ),
+                'geography'       => 'tr-national',
+                'source_tier'     => self::SOURCE_TIER_A,
+                'detail_strategy' => self::DETAIL_PAGE_REQUIRED,
                 'image_policy'    => self::IMAGE_SOURCE_PREFERRED,
             ),
         );
