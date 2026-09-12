@@ -242,10 +242,13 @@ class Sektorel_Content_Editorial_Architecture {
         $renamed = 0;
         $created = 0;
         $deprecated = 0;
+        $reset_candidates = 0;
         $errors = array();
 
         foreach ( self::primary_categories() as $slug => $definition ) {
             $term = get_term_by( 'slug', $slug, 'category' );
+            $term_created = false;
+
             if ( ! $term ) {
                 $inserted = wp_insert_term( $definition['name'], 'category', array(
                     'slug'        => $slug,
@@ -256,6 +259,7 @@ class Sektorel_Content_Editorial_Architecture {
                     continue;
                 }
                 $term = get_term( (int) $inserted['term_id'], 'category' );
+                $term_created = true;
                 $created++;
             }
 
@@ -279,7 +283,7 @@ class Sektorel_Content_Editorial_Architecture {
                 wp_update_term( $term_id, 'category', array( 'description' => $definition['description'] ) );
             }
 
-            if ( $managed || $created > 0 ) {
+            if ( $managed || $term_created ) {
                 update_term_meta( $term_id, 'rank_math_title', $definition['seo_title'] );
                 update_term_meta( $term_id, 'rank_math_description', $definition['seo_description'] );
                 update_term_meta( $term_id, 'rank_math_focus_keyword', $definition['focus_keyword'] );
@@ -309,15 +313,41 @@ class Sektorel_Content_Editorial_Architecture {
             $deprecated++;
         }
 
+        // Prevent old triage-v3 ready candidates from bypassing the v2 mapper.
+        // Processed and duplicate records are intentionally untouched.
+        if ( class_exists( 'Sektorel_Content_Candidates' ) ) {
+            global $wpdb;
+            $table = Sektorel_Content_Candidates::table_name();
+            $updated = $wpdb->query(
+                $wpdb->prepare(
+                    "UPDATE {$table}
+                     SET status = %s, updated_at = %s
+                     WHERE status IN ( %s, %s )
+                       AND draft_post_id = 0
+                       AND ai_status IN ( 'pending', 'error' )",
+                    Sektorel_Content_Candidates::STATUS_NEW,
+                    current_time( 'mysql', true ),
+                    Sektorel_Content_Candidates::STATUS_READY,
+                    Sektorel_Content_Candidates::STATUS_REVIEW
+                )
+            );
+            if ( false === $updated ) {
+                $errors[] = 'Candidate v2 yeniden değerlendirme kuyruğu hazırlanamadı: ' . ( $wpdb->last_error ?: 'veritabanı hatası' );
+            } else {
+                $reset_candidates = (int) $updated;
+            }
+        }
+
         if ( ! $errors ) {
             update_option( self::OPTION_KEY, self::MIGRATION_VERSION, false );
         }
 
         set_transient( self::NOTICE_KEY, array(
-            'created'    => $created,
-            'renamed'    => $renamed,
-            'deprecated' => $deprecated,
-            'errors'     => $errors,
+            'created'          => $created,
+            'renamed'          => $renamed,
+            'deprecated'       => $deprecated,
+            'reset_candidates' => $reset_candidates,
+            'errors'           => $errors,
         ), MINUTE_IN_SECONDS );
     }
 
@@ -334,11 +364,12 @@ class Sektorel_Content_Editorial_Architecture {
         $errors = isset( $notice['errors'] ) && is_array( $notice['errors'] ) ? $notice['errors'] : array();
         $class = $errors ? 'notice notice-warning' : 'notice notice-success is-dismissible';
         printf(
-            '<div class="%1$s"><p><strong>Sektörel Ajanda Editorial Architecture v2:</strong> %2$d kategori oluşturuldu, %3$d desk adı güncellendi, %4$d legacy kategori topic-hub olarak işaretlendi.%5$s</p></div>',
+            '<div class="%1$s"><p><strong>Sektörel Ajanda Editorial Architecture v2:</strong> %2$d kategori oluşturuldu, %3$d desk adı güncellendi, %4$d legacy kategori topic-hub olarak işaretlendi, %5$d candidate v2 triage için kuyruğa alındı.%6$s</p></div>',
             esc_attr( $class ),
             (int) ( $notice['created'] ?? 0 ),
             (int) ( $notice['renamed'] ?? 0 ),
             (int) ( $notice['deprecated'] ?? 0 ),
+            (int) ( $notice['reset_candidates'] ?? 0 ),
             $errors ? ' Hatalar: ' . esc_html( implode( ' | ', $errors ) ) : ''
         );
     }
