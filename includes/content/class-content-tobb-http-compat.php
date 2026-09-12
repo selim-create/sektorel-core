@@ -66,7 +66,7 @@ class Sektorel_Content_TOBB_HTTP_Compat {
 
         if ( $is_detail ) {
             $body = (string) wp_remote_retrieve_body( $response );
-            $body = self::inject_deterministic_detail_body( $body );
+            $body = self::rewrite_deterministic_detail_body( $body );
             if ( '' === trim( $body ) ) {
                 return $preempt;
             }
@@ -136,40 +136,45 @@ class Sektorel_Content_TOBB_HTTP_Compat {
     }
 
     /**
-     * Inject a deterministic synthetic article container for the generic detail
-     * parser. TOBB's source HTML is malformed around the article body: the first
-     * paragraph closes the visible content container and later paragraphs continue
-     * in sibling divs. The stable boundary is the opening
-     * `.box-content-container.justify` block through (but not including)
-     * `#right-column`.
+     * Rewrite TOBB's malformed legacy article block in place.
+     *
+     * The source closes `.box-content-container.justify` after the first
+     * paragraph and continues the real article in sibling divs. The stable raw
+     * HTML boundary is the opening article container through (but not including)
+     * `#right-column`. Replacing that whole slice with a clean block makes the
+     * existing generic title-container parser see the complete article without
+     * adding TOBB heuristics to the generic extractor.
      */
-    private static function inject_deterministic_detail_body( $html ) {
+    private static function rewrite_deterministic_detail_body( $html ) {
         $html = (string) $html;
         if ( '' === trim( $html ) ) {
             return $html;
         }
 
-        $paragraphs = self::extract_full_article_paragraphs( $html );
+        $block = self::extract_full_article_block( $html );
+        if ( $block ) {
+            $fragment = '<div class="box-content-container justify content-detail sektorel-tobb-detail">';
+
+            if ( ! empty( $block['image_url'] ) ) {
+                $fragment .= '<img src="' . esc_url( $block['image_url'] ) . '" alt="" />';
+            }
+
+            foreach ( $block['paragraphs'] as $paragraph ) {
+                $fragment .= '<p>' . esc_html( $paragraph ) . '</p>';
+            }
+            $fragment .= '</div>';
+
+            return substr( $html, 0, $block['start'] ) . $fragment . substr( $html, $block['end'] );
+        }
 
         // Older/minimal TOBB pages can expose only the hidden #detay payload.
         // Keep that as a conservative fallback instead of losing enrichment.
-        if ( ! $paragraphs ) {
-            $fallback = self::extract_hidden_detail_value( $html );
-            if ( $fallback ) {
-                $paragraphs = array( $fallback );
-            }
-        }
-
-        if ( ! $paragraphs ) {
+        $fallback = self::extract_hidden_detail_value( $html );
+        if ( ! $fallback ) {
             return $html;
         }
 
-        $fragment = '<div class="content-detail sektorel-tobb-detail">';
-        foreach ( $paragraphs as $paragraph ) {
-            $fragment .= '<p>' . esc_html( $paragraph ) . '</p>';
-        }
-        $fragment .= '</div>';
-
+        $fragment = '<div class="content-detail sektorel-tobb-detail"><p>' . esc_html( $fallback ) . '</p></div>';
         if ( false !== stripos( $html, '</body>' ) ) {
             return preg_replace( '/<\/body>/i', $fragment . '</body>', $html, 1 );
         }
@@ -178,20 +183,19 @@ class Sektorel_Content_TOBB_HTTP_Compat {
     }
 
     /**
-     * Extract the complete TOBB article body from a deterministic raw-HTML slice.
-     * Do not use generic DOM ancestry here: malformed legacy markup closes the
-     * first content div before the remaining article paragraphs.
+     * Extract the complete TOBB article from a deterministic raw-HTML slice.
      */
-    private static function extract_full_article_paragraphs( $html ) {
+    private static function extract_full_article_block( $html ) {
         $start_pattern = '/<div\b[^>]*class\s*=\s*(["\'])[^"\']*\bbox-content-container\b[^"\']*\bjustify\b[^"\']*\1[^>]*>/iu';
         if ( ! preg_match( $start_pattern, $html, $start_match, PREG_OFFSET_CAPTURE ) ) {
             return array();
         }
 
-        $start_tag = (string) $start_match[0][0];
-        $start     = (int) $start_match[0][1] + strlen( $start_tag );
+        $start_tag_offset = (int) $start_match[0][1];
+        $start_tag        = (string) $start_match[0][0];
+        $content_start    = $start_tag_offset + strlen( $start_tag );
 
-        $tail = substr( $html, $start );
+        $tail = substr( $html, $content_start );
         if ( false === $tail ) {
             return array();
         }
@@ -201,17 +205,21 @@ class Sektorel_Content_TOBB_HTTP_Compat {
             return array();
         }
 
-        $end = (int) $end_match[0][1];
-        if ( $end <= 0 ) {
+        $relative_end = (int) $end_match[0][1];
+        if ( $relative_end <= 0 ) {
             return array();
         }
 
-        $slice = substr( $tail, 0, $end );
+        $absolute_end = $content_start + $relative_end;
+        $slice = substr( $html, $content_start, $relative_end );
         if ( false === $slice || '' === trim( $slice ) ) {
             return array();
         }
 
-        // Remove media and convert known paragraph/block boundaries to newlines.
+        $image_url = self::extract_first_article_image( $slice );
+
+        // Remove media and convert the legacy block structure into paragraph
+        // boundaries before stripping markup.
         $slice = preg_replace( '/<img\b[^>]*>/iu', '', $slice );
         $slice = preg_replace( '/<br\s*\/?\s*>/iu', "\n", $slice );
         $slice = preg_replace( '/<\/(?:p|div|li|h[1-6])\s*>/iu', "\n", $slice );
@@ -235,11 +243,8 @@ class Sektorel_Content_TOBB_HTTP_Compat {
                 continue;
             }
 
-            // Strip legacy print-script debris if it leaks into the content slice.
-            if (
-                false !== stripos( $line, "pathname" ) ||
-                preg_match( '/^URL\s*:/iu', $line )
-            ) {
+            // Strip legacy print-script debris if it ever leaks into the slice.
+            if ( false !== stripos( $line, 'pathname' ) || preg_match( '/^URL\s*:/iu', $line ) ) {
                 continue;
             }
 
@@ -260,7 +265,44 @@ class Sektorel_Content_TOBB_HTTP_Compat {
             return array();
         }
 
-        return $paragraphs;
+        return array(
+            'start'      => $start_tag_offset,
+            'end'        => $absolute_end,
+            'paragraphs' => $paragraphs,
+            'image_url'  => $image_url,
+        );
+    }
+
+    private static function extract_first_article_image( $html ) {
+        if ( ! preg_match( '/<img\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|\'([^\']+)\'|([^\s>]+))/iu', (string) $html, $match ) ) {
+            return '';
+        }
+
+        $url = '';
+        foreach ( array( 1, 2, 3 ) as $index ) {
+            if ( ! empty( $match[ $index ] ) ) {
+                $url = trim( (string) $match[ $index ] );
+                break;
+            }
+        }
+
+        if ( ! $url ) {
+            return '';
+        }
+
+        if ( 0 === strpos( $url, '//' ) ) {
+            $url = 'https:' . $url;
+        } elseif ( 0 === strpos( $url, '/' ) ) {
+            $url = 'https://www.tobb.org.tr' . $url;
+        }
+
+        $url = esc_url_raw( $url );
+        if ( ! $url ) {
+            return '';
+        }
+
+        $host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
+        return in_array( $host, array( 'tobb.org.tr', 'www.tobb.org.tr' ), true ) ? $url : '';
     }
 
     private static function extract_hidden_detail_value( $html ) {
