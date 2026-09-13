@@ -391,6 +391,6 @@ class Sektorel_Content_Candidate_Triage {
     }
 
     private static function run_key( $user_id ) {
-        return 'sektorel_content_triage_run_' . absint( $user_id ) . '_' . sanitize_key( $token );
+        return 'sektorel_content_triage_run_' . absint( $user_id );
     }
 }
