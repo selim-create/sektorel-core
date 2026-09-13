@@ -11,6 +11,7 @@ require_once __DIR__ . '/class-content-source-tbb-finance-adapter.php';
 require_once __DIR__ . '/class-content-source-csgb-cgm-adapter.php';
 require_once __DIR__ . '/class-content-source-ticaret-ihracat-adapter.php';
 require_once __DIR__ . '/class-content-source-yatirim-destek-adapter.php';
+require_once __DIR__ . '/class-content-source-gib-mevzuat-adapter.php';
 
 /**
  * Adapter-aware bridge for the existing Content Source Scanner admin actions.
@@ -152,8 +153,9 @@ class Sektorel_Content_Source_Custom_Bridge {
         $csgm_supported = 'csgb_cgm_news_html' === $adapter && class_exists( 'Sektorel_Content_Source_CSGM_Adapter' );
         $ticaret_ihracat_supported = 'ticaret_ihracat_news_html' === $adapter && class_exists( 'Sektorel_Content_Source_Ticaret_Ihracat_Adapter' );
         $yatirim_destek_supported = 'yatirim_destek_updates_html' === $adapter && class_exists( 'Sektorel_Content_Source_Yatirim_Destek_Adapter' );
+        $gib_mevzuat_supported = 'gib_mevzuat_api' === $adapter && class_exists( 'Sektorel_Content_Source_GIB_Mevzuat_Adapter' );
 
-        if ( 'custom' !== $source_type || ( ! $generic_supported && ! $iso_supported && ! $btk_supported && ! $tbb_supported && ! $csgm_supported && ! $ticaret_ihracat_supported && ! $yatirim_destek_supported ) ) {
+        if ( 'custom' !== $source_type || ( ! $generic_supported && ! $iso_supported && ! $btk_supported && ! $tbb_supported && ! $csgm_supported && ! $ticaret_ihracat_supported && ! $yatirim_destek_supported && ! $gib_mevzuat_supported ) ) {
             return Sektorel_Content_Source_Scanner::scan_source( $source_id );
         }
 
@@ -231,6 +233,8 @@ class Sektorel_Content_Source_Custom_Bridge {
             $fetched = Sektorel_Content_Source_Ticaret_Ihracat_Adapter::fetch_items( $source_id, $max_items );
         } elseif ( 'yatirim_destek_updates_html' === $adapter ) {
             $fetched = Sektorel_Content_Source_Yatirim_Destek_Adapter::fetch_items( $source_id, $max_items );
+        } elseif ( 'gib_mevzuat_api' === $adapter ) {
+            $fetched = Sektorel_Content_Source_GIB_Mevzuat_Adapter::fetch_items( $source_id, $max_items );
         } else {
             $fetched = Sektorel_Content_Source_Custom_Adapters::fetch_items( $adapter, $source_id, $max_items );
         }
@@ -285,7 +289,7 @@ class Sektorel_Content_Source_Custom_Bridge {
                     'trust_level'     => $trust,
                     'fetched_at'      => $fetched_at,
                     'date_source'     => sanitize_key( $item['date_source'] ?? '' ),
-                    'source_strategy' => 'custom_html',
+                    'source_strategy' => sanitize_key( $item['source_strategy'] ?? 'custom_html' ),
                 ),
             ) );
 
@@ -526,6 +530,33 @@ class Sektorel_Content_Source_Custom_Bridge {
                     'sector_scope'       => 'multi-sector',
                     'geography'          => 'tr-national',
                     'source_tier'        => 'b',
+                    'detail_strategy'    => 'feed_only',
+                    'image_policy'       => 'none',
+                ),
+            ),
+            array(
+                'source_key' => 'gib_mevzuat_latest',
+                'title'      => 'Gelir İdaresi Başkanlığı — Son Eklenen Mevzuat',
+                'meta'       => array(
+                    'source_key'         => 'gib_mevzuat_latest',
+                    'base_url'           => 'https://gib.gov.tr/',
+                    'feed_url'           => 'https://gib.gov.tr/api/gibportal/search/mevzuatLastAdded',
+                    'source_type'        => 'custom',
+                    'adapter'            => 'gib_mevzuat_api',
+                    'role'               => 'official',
+                    'trust_level'        => 'high',
+                    'language'           => 'tr',
+                    'category_slugs'     => 'mevzuat-tesvikler',
+                    'scan_interval'      => 'manual',
+                    'enabled'            => '1',
+                    'ai_enabled'         => '0',
+                    'max_items_per_scan' => '20',
+                    'max_ai_items_daily' => '0',
+                    'primary_desk'       => 'mevzuat-tesvikler',
+                    'topic_scope'        => 'vergi-mevzuati,teblig,sirkuler,cumhurbaskani-kararlari,vergi-usul',
+                    'sector_scope'       => 'multi-sector',
+                    'geography'          => 'tr-national',
+                    'source_tier'        => 'a',
                     'detail_strategy'    => 'feed_only',
                     'image_policy'       => 'none',
                 ),
