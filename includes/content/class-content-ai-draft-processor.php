@@ -7,7 +7,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 require_once __DIR__ . '/class-content-draft-media.php';
 
 /**
- * Admin-triggered Ready Candidate -> source enrichment -> AI editorial draft.
+ * Admin/cron-triggered Ready Candidate -> source enrichment -> AI editorial draft.
  * Never publishes posts automatically.
  */
 class Sektorel_Content_AI_Draft_Processor {
@@ -17,6 +17,9 @@ class Sektorel_Content_AI_Draft_Processor {
     const DAILY_LIMIT_DEFAULT = 20;
     const MAX_OUTPUT_TOKENS = 2200;
     const REQUEST_TIMEOUT = 45;
+    const CONTRACT_VERSION = 1;
+    const REQUIRED_TRIAGE_VERSION = 5;
+    const REQUIRED_SCHEMA_VERSION = 2;
 
     public static function init() {
         if ( ! is_admin() ) {
@@ -39,54 +42,84 @@ class Sektorel_Content_AI_Draft_Processor {
         if ( ! current_user_can( 'manage_options' ) ) {
             wp_send_json_error( array( 'message' => 'Yetkisiz işlem.' ), 403 );
         }
+
+        $result = self::process_ready_batch( self::BATCH_SIZE, false );
+        if ( is_wp_error( $result ) ) {
+            wp_send_json_error( array(
+                'message' => $result->get_error_message(),
+                'code'    => $result->get_error_code(),
+            ) );
+        }
+
+        wp_send_json_success( $result );
+    }
+
+    /**
+     * Process a bounded batch of contract-valid ready candidates.
+     *
+     * When $automation_only is true, only candidates whose source is both enabled
+     * and AI-enabled are selected. Manual admin batches preserve the historical
+     * behavior and may process any ready candidate selected by an administrator.
+     */
+    public static function process_ready_batch( $requested_limit = self::BATCH_SIZE, $automation_only = false ) {
         if ( ! self::is_enabled() ) {
-            wp_send_json_error( array( 'message' => 'OpenAI API anahtarı tanımlı değil.' ) );
+            return new WP_Error( 'content_ai_disabled', 'OpenAI API anahtarı tanımlı değil.' );
+        }
+
+        if ( class_exists( 'Sektorel_Core_Settings' ) ) {
+            $budget = Sektorel_Core_Settings::budget_status();
+            if ( ! empty( $budget['blocked'] ) ) {
+                return new WP_Error( 'content_ai_budget_blocked', 'Aylık AI bütçe limiti doldu; yeni taslak üretilmedi.' );
+            }
         }
 
         $remaining_daily = max( 0, self::daily_limit() - self::daily_processed_count() );
         if ( $remaining_daily <= 0 ) {
-            wp_send_json_success( array(
+            return array(
                 'processed' => 0,
                 'drafted'   => 0,
                 'errors'    => 0,
                 'skipped'   => 0,
+                'contract_blocked' => 0,
+                'images_added' => 0,
+                'image_errors' => 0,
+                'remaining' => self::remaining_ready_count( $automation_only ),
                 'done'      => true,
                 'daily_limit_reached' => true,
+                'daily_limit' => self::daily_limit(),
+                'daily_used'  => self::daily_processed_count(),
                 'messages'  => array( 'Günlük AI draft limiti doldu.' ),
-            ) );
+            );
         }
 
-        global $wpdb;
-        $table = Sektorel_Content_Candidates::table_name();
-        $limit = min( self::BATCH_SIZE, $remaining_daily );
-        $rows = $wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT * FROM {$table}
-                 WHERE status = %s
-                   AND ai_status IN ( 'pending', 'error' )
-                   AND draft_post_id = 0
-                 ORDER BY published_at DESC, id ASC
-                 LIMIT %d",
-                Sektorel_Content_Candidates::STATUS_READY,
-                $limit
-            ),
-            ARRAY_A
-        );
+        $requested_limit = absint( $requested_limit );
+        if ( ! $requested_limit ) {
+            $requested_limit = self::BATCH_SIZE;
+        }
+        $limit = min( self::BATCH_SIZE, $requested_limit, $remaining_daily );
 
+        $rows = self::ready_rows( $limit, $automation_only );
         if ( ! $rows ) {
-            wp_send_json_success( array(
+            return array(
                 'processed' => 0,
                 'drafted'   => 0,
                 'errors'    => 0,
                 'skipped'   => 0,
+                'contract_blocked' => 0,
+                'images_added' => 0,
+                'image_errors' => 0,
+                'remaining' => 0,
                 'done'      => true,
-                'messages'  => array( 'Taslak üretilecek ready candidate kalmadı.' ),
-            ) );
+                'daily_limit' => self::daily_limit(),
+                'daily_used'  => self::daily_processed_count(),
+                'messages'  => array( 'Taslak üretilecek uygun ready candidate kalmadı.' ),
+            );
         }
 
         $drafted = 0;
         $errors = 0;
         $skipped = 0;
+        $contract_blocked = 0;
         $images_added = 0;
         $image_errors = 0;
         $messages = array();
@@ -97,6 +130,14 @@ class Sektorel_Content_AI_Draft_Processor {
                 continue;
             }
 
+            $contract = self::validate_candidate_contract( $row );
+            if ( is_wp_error( $contract ) ) {
+                $contract_blocked++;
+                self::mark_contract_review( $candidate_id, $contract );
+                $messages[] = sprintf( '#%d AI kontratına takıldı: %s', $candidate_id, $contract->get_error_message() );
+                continue;
+            }
+
             self::mark_ai_status( $candidate_id, 'processing' );
 
             $enriched = Sektorel_Content_Detail_Extractor::enrich_candidate( $row );
@@ -104,6 +145,14 @@ class Sektorel_Content_AI_Draft_Processor {
                 $errors++;
                 self::mark_ai_error( $candidate_id, $enriched->get_error_code(), $enriched->get_error_message() );
                 $messages[] = 'Hata #' . $candidate_id . ': ' . $enriched->get_error_message();
+                continue;
+            }
+
+            $contract = self::validate_candidate_contract( $enriched );
+            if ( is_wp_error( $contract ) ) {
+                $contract_blocked++;
+                self::mark_contract_review( $candidate_id, $contract );
+                $messages[] = sprintf( '#%d enrichment sonrası AI kontratına takıldı: %s', $candidate_id, $contract->get_error_message() );
                 continue;
             }
 
@@ -146,27 +195,23 @@ class Sektorel_Content_AI_Draft_Processor {
             $drafted++;
         }
 
-        $remaining = (int) $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT COUNT(*) FROM {$table}
-                 WHERE status = %s AND ai_status IN ( 'pending', 'error' ) AND draft_post_id = 0",
-                Sektorel_Content_Candidates::STATUS_READY
-            )
-        );
+        $remaining = self::remaining_ready_count( $automation_only );
+        $daily_used = self::daily_processed_count();
 
-        wp_send_json_success( array(
+        return array(
             'processed'    => count( $rows ),
             'drafted'      => $drafted,
             'errors'       => $errors,
             'skipped'      => $skipped,
+            'contract_blocked' => $contract_blocked,
             'images_added' => $images_added,
             'image_errors' => $image_errors,
             'remaining'    => $remaining,
-            'done'         => 0 === $remaining || self::daily_processed_count() >= self::daily_limit(),
+            'done'         => 0 === $remaining || $daily_used >= self::daily_limit(),
             'daily_limit'  => self::daily_limit(),
-            'daily_used'   => self::daily_processed_count(),
+            'daily_used'   => $daily_used,
             'messages'     => $messages,
-        ) );
+        );
     }
 
     /**
@@ -225,6 +270,153 @@ class Sektorel_Content_AI_Draft_Processor {
             'image_errors' => $image_errors,
             'messages'     => $messages,
         ) );
+    }
+
+    private static function ready_rows( $limit, $automation_only ) {
+        global $wpdb;
+        $table = Sektorel_Content_Candidates::table_name();
+        $source_clause = '';
+
+        if ( $automation_only ) {
+            $source_ids = self::automation_source_ids();
+            if ( ! $source_ids ) {
+                return array();
+            }
+            $source_clause = ' AND source_id IN (' . implode( ',', array_map( 'absint', $source_ids ) ) . ')';
+        }
+
+        $sql = "SELECT * FROM {$table}
+                WHERE status = %s
+                  AND ai_status IN ( 'pending', 'error' )
+                  AND draft_post_id = 0
+                  {$source_clause}
+                ORDER BY published_at DESC, id ASC
+                LIMIT %d";
+
+        return $wpdb->get_results(
+            $wpdb->prepare( $sql, Sektorel_Content_Candidates::STATUS_READY, absint( $limit ) ),
+            ARRAY_A
+        );
+    }
+
+    private static function remaining_ready_count( $automation_only ) {
+        global $wpdb;
+        $table = Sektorel_Content_Candidates::table_name();
+        $source_clause = '';
+
+        if ( $automation_only ) {
+            $source_ids = self::automation_source_ids();
+            if ( ! $source_ids ) {
+                return 0;
+            }
+            $source_clause = ' AND source_id IN (' . implode( ',', array_map( 'absint', $source_ids ) ) . ')';
+        }
+
+        return (int) $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$table}
+                 WHERE status = %s
+                   AND ai_status IN ( 'pending', 'error' )
+                   AND draft_post_id = 0
+                   {$source_clause}",
+                Sektorel_Content_Candidates::STATUS_READY
+            )
+        );
+    }
+
+    private static function automation_source_ids() {
+        $ids = get_posts( array(
+            'post_type'      => 'content_source',
+            'post_status'    => array( 'publish', 'draft', 'private' ),
+            'posts_per_page' => -1,
+            'fields'         => 'ids',
+            'no_found_rows'  => true,
+            'meta_query'     => array(
+                'relation' => 'AND',
+                array(
+                    'key'   => 'enabled',
+                    'value' => '1',
+                ),
+                array(
+                    'key'   => 'ai_enabled',
+                    'value' => '1',
+                ),
+            ),
+        ) );
+
+        return array_values( array_filter( array_map( 'absint', (array) $ids ) ) );
+    }
+
+    private static function validate_candidate_contract( $row ) {
+        $normalized = self::decode_json_array( $row['normalized_payload'] ?? '' );
+        $evidence = self::decode_json_array( $row['evidence_json'] ?? '' );
+        $triage = is_array( $evidence['triage'] ?? null ) ? $evidence['triage'] : array();
+
+        $triage_version = absint( $triage['version'] ?? 0 );
+        if ( self::REQUIRED_TRIAGE_VERSION !== $triage_version ) {
+            return new WP_Error( 'content_ai_contract_triage_version', 'Candidate triage v5 kontratında değil.' );
+        }
+
+        $schema_version = absint( $normalized['schema_version'] ?? 0 );
+        if ( self::REQUIRED_SCHEMA_VERSION !== $schema_version ) {
+            return new WP_Error( 'content_ai_contract_schema_version', 'Candidate schema v2 kontratında değil.' );
+        }
+
+        if ( 'ready' !== sanitize_key( $normalized['triage_status'] ?? '' ) ) {
+            return new WP_Error( 'content_ai_contract_triage_status', 'Normalized payload ready triage durumunu doğrulamıyor.' );
+        }
+
+        $primary = sanitize_title( $normalized['primary_category'] ?? '' );
+        if ( ! $primary ) {
+            return new WP_Error( 'content_ai_contract_primary_missing', 'Primary category eksik.' );
+        }
+
+        $categories = array_values( array_unique( array_filter(
+            array_map( 'sanitize_title', (array) ( $normalized['suggested_category_slugs'] ?? array() ) )
+        ) ) );
+
+        if ( 1 !== count( $categories ) || $primary !== $categories[0] ) {
+            return new WP_Error( 'content_ai_contract_category_mismatch', 'Primary category ile legacy category kontratı eşleşmiyor.' );
+        }
+
+        $term = get_term_by( 'slug', $primary, 'category' );
+        if ( ! $term || is_wp_error( $term ) ) {
+            return new WP_Error( 'content_ai_contract_category_missing', 'Primary category WordPress üzerinde bulunamadı.' );
+        }
+
+        return array(
+            'primary_category' => $primary,
+            'category_term_id' => absint( $term->term_id ),
+        );
+    }
+
+    private static function mark_contract_review( $candidate_id, $error ) {
+        global $wpdb;
+        $candidate = Sektorel_Content_Candidates::get( $candidate_id );
+        $evidence = self::decode_json_array( $candidate['evidence_json'] ?? '' );
+
+        $evidence['ai_contract'] = array(
+            'status'       => 'blocked',
+            'version'      => self::CONTRACT_VERSION,
+            'error_code'   => sanitize_key( $error->get_error_code() ),
+            'message'      => sanitize_textarea_field( $error->get_error_message() ),
+            'blocked_at'   => gmdate( 'c' ),
+        );
+
+        $wpdb->update(
+            Sektorel_Content_Candidates::table_name(),
+            array(
+                'status'        => Sektorel_Content_Candidates::STATUS_REVIEW,
+                'ai_status'     => 'pending',
+                'evidence_json' => wp_json_encode( $evidence, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ),
+                'error_code'    => sanitize_key( $error->get_error_code() ),
+                'error_message' => sanitize_textarea_field( $error->get_error_message() ),
+                'updated_at'    => current_time( 'mysql', true ),
+            ),
+            array( 'id' => absint( $candidate_id ) ),
+            array( '%s', '%s', '%s', '%s', '%s', '%s' ),
+            array( '%d' )
+        );
     }
 
     private static function request_editorial_draft( $row ) {
