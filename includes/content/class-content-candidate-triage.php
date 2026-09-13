@@ -5,6 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 require_once __DIR__ . '/class-content-editorial-architecture.php';
+require_once __DIR__ . '/class-content-source-policy.php';
 
 /**
  * Deterministic pre-AI triage for content candidates.
@@ -15,7 +16,7 @@ class Sektorel_Content_Candidate_Triage {
     const NONCE_ACTION = 'sektorel_content_candidate_triage';
     const BATCH_SIZE = 25;
     const DEFAULT_FRESHNESS_DAYS = 45;
-    const TRIAGE_VERSION = 4;
+    const TRIAGE_VERSION = 5;
     const RUN_TTL = 30 * MINUTE_IN_SECONDS;
 
     public static function init() {
@@ -156,13 +157,16 @@ class Sektorel_Content_Candidate_Triage {
         $summary      = trim( (string) ( $candidate['extracted_text'] ?? '' ) );
         $published_at = trim( (string) ( $candidate['published_at'] ?? '' ) );
         $source_id    = absint( $candidate['source_id'] ?? 0 );
+        $source_key   = sanitize_key( $candidate['source_key'] ?? '' );
         $routing_text = trim( $title . ' ' . $summary );
 
         $freshness_days       = self::source_freshness_days( $source_id );
         $age_days             = self::age_days( $published_at );
         $source_categories    = self::source_categories( $source_id, $candidate );
-        $suggested_categories = self::suggest_categories( $routing_text, $source_categories );
+        $source_primary       = self::source_primary_desk( $source_key, $source_id );
+        $suggested_categories = self::suggest_categories( $routing_text, $source_categories, $source_primary );
         $primary_category     = $suggested_categories ? (string) $suggested_categories[0] : '';
+        $primary_source       = $source_primary && $primary_category === $source_primary ? 'source_coverage' : 'deterministic_text';
         $topic_tags           = Sektorel_Content_Editorial_Architecture::topic_tags_for_text( $routing_text );
         $content_format       = Sektorel_Content_Editorial_Architecture::content_format_for_text( $routing_text );
 
@@ -199,6 +203,9 @@ class Sektorel_Content_Candidate_Triage {
             $blocking[] = 'primary desk eşleşmesi yok';
         } else {
             $positive[] = 'primary desk: ' . $primary_category;
+            if ( 'source_coverage' === $primary_source ) {
+                $positive[] = 'primary desk kaynağı: source coverage';
+            }
         }
 
         if ( $topic_tags ) {
@@ -218,21 +225,22 @@ class Sektorel_Content_Candidate_Triage {
             : Sektorel_Content_Candidates::STATUS_REVIEW;
 
         return array(
-            'status'               => $status,
-            'reasons'              => empty( $blocking ) ? $positive : array_merge( $blocking, $positive ),
-            'blocking_reasons'     => $blocking,
-            'positive_signals'     => $positive,
-            'age_days'             => $age_days,
-            'freshness_days'       => $freshness_days,
-            'primary_category'     => $primary_category,
+            'status'                  => $status,
+            'reasons'                 => empty( $blocking ) ? $positive : array_merge( $blocking, $positive ),
+            'blocking_reasons'        => $blocking,
+            'positive_signals'        => $positive,
+            'age_days'                => $age_days,
+            'freshness_days'          => $freshness_days,
+            'primary_category'        => $primary_category,
+            'primary_category_source' => $primary_source,
             // Keep the legacy field bounded to exactly one item while older
             // processor code is still deployed alongside schema v2 candidates.
-            'suggested_categories' => $suggested_categories,
-            'topic_tags'           => $topic_tags,
-            'content_format'       => $content_format,
-            'triaged_at'           => gmdate( 'c' ),
-            'version'              => self::TRIAGE_VERSION,
-            'schema_version'       => Sektorel_Content_Editorial_Architecture::SCHEMA_VERSION,
+            'suggested_categories'    => $suggested_categories,
+            'topic_tags'              => $topic_tags,
+            'content_format'          => $content_format,
+            'triaged_at'              => gmdate( 'c' ),
+            'version'                 => self::TRIAGE_VERSION,
+            'schema_version'          => Sektorel_Content_Editorial_Architecture::SCHEMA_VERSION,
         );
     }
 
@@ -331,8 +339,26 @@ class Sektorel_Content_Candidate_Triage {
         return Sektorel_Content_Editorial_Architecture::source_category_slugs( $slugs );
     }
 
+    private static function source_primary_desk( $source_key, $source_id ) {
+        if ( ! class_exists( 'Sektorel_Content_Source_Policy' ) ) {
+            return '';
+        }
+
+        $slug = Sektorel_Content_Source_Policy::primary_desk( sanitize_key( $source_key ), absint( $source_id ) );
+        if ( ! $slug || ! Sektorel_Content_Editorial_Architecture::is_primary_slug( $slug ) ) {
+            return '';
+        }
+
+        return get_term_by( 'slug', $slug, 'category' ) ? $slug : '';
+    }
+
     /** v2 intentionally returns at most one primary editorial category. */
-    private static function suggest_categories( $text, $fallback ) {
+    private static function suggest_categories( $text, $fallback, $source_primary = '' ) {
+        $source_primary = sanitize_title( $source_primary );
+        if ( $source_primary ) {
+            return array( $source_primary );
+        }
+
         $slug = Sektorel_Content_Editorial_Architecture::primary_category_for_text( $text, $fallback );
         if ( ! $slug || ! get_term_by( 'slug', $slug, 'category' ) ) {
             return array();
@@ -365,6 +391,6 @@ class Sektorel_Content_Candidate_Triage {
     }
 
     private static function run_key( $user_id ) {
-        return 'sektorel_content_triage_run_' . absint( $user_id );
+        return 'sektorel_content_triage_run_' . absint( $user_id ) . '_' . sanitize_key( $token );
     }
 }
