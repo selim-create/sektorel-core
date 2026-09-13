@@ -17,7 +17,6 @@ class Sektorel_Content_Candidate_Triage {
     const BATCH_SIZE = 25;
     const DEFAULT_FRESHNESS_DAYS = 45;
     const TRIAGE_VERSION = 5;
-    const RUN_TTL = 30 * MINUTE_IN_SECONDS;
 
     public static function init() {
         if ( ! is_admin() ) {
@@ -38,58 +37,52 @@ class Sektorel_Content_Candidate_Triage {
             wp_send_json_error( array( 'message' => 'Yetkisiz işlem.' ), 403 );
         }
 
-        global $wpdb;
-        $table   = Sektorel_Content_Candidates::table_name();
-        $run_key = self::run_key( get_current_user_id() );
-        $active  = get_transient( $run_key );
-
-        if ( ! $active ) {
-            $new_count = (int) $wpdb->get_var( $wpdb->prepare(
-                "SELECT COUNT(*) FROM {$table} WHERE status = %s",
-                Sektorel_Content_Candidates::STATUS_NEW
+        $result = self::process_new_batch( self::BATCH_SIZE );
+        if ( is_wp_error( $result ) ) {
+            wp_send_json_error( array(
+                'message' => $result->get_error_message(),
+                'code'    => $result->get_error_code(),
             ) );
-
-            if ( 0 === $new_count ) {
-                $review_count = (int) $wpdb->get_var( $wpdb->prepare(
-                    "SELECT COUNT(*) FROM {$table} WHERE status = %s",
-                    Sektorel_Content_Candidates::STATUS_REVIEW
-                ) );
-
-                if ( $review_count > 0 ) {
-                    $wpdb->update(
-                        $table,
-                        array(
-                            'status'     => Sektorel_Content_Candidates::STATUS_NEW,
-                            'updated_at' => current_time( 'mysql', true ),
-                        ),
-                        array( 'status' => Sektorel_Content_Candidates::STATUS_REVIEW ),
-                        array( '%s', '%s' ),
-                        array( '%s' )
-                    );
-                }
-            }
-
-            set_transient( $run_key, array( 'started_at' => time() ), self::RUN_TTL );
         }
+
+        wp_send_json_success( $result );
+    }
+
+    /**
+     * Process only genuinely new candidates.
+     *
+     * Review rows are intentionally never reset to new here. Re-triage of review
+     * candidates must be an explicit separate action so normal/cron runs remain
+     * idempotent and cannot reopen the whole manual-review pool.
+     */
+    public static function process_new_batch( $requested_limit = self::BATCH_SIZE ) {
+        global $wpdb;
+        $table = Sektorel_Content_Candidates::table_name();
+
+        $limit = absint( $requested_limit );
+        if ( ! $limit ) {
+            $limit = self::BATCH_SIZE;
+        }
+        $limit = min( self::BATCH_SIZE, $limit );
 
         $rows = $wpdb->get_results(
             $wpdb->prepare(
                 "SELECT * FROM {$table} WHERE status = %s ORDER BY id ASC LIMIT %d",
                 Sektorel_Content_Candidates::STATUS_NEW,
-                self::BATCH_SIZE
+                $limit
             ),
             ARRAY_A
         );
 
         if ( ! $rows ) {
-            delete_transient( $run_key );
-            wp_send_json_success( array(
+            return array(
                 'processed' => 0,
                 'ready'     => 0,
                 'review'    => 0,
+                'remaining' => 0,
                 'done'      => true,
-                'messages'  => array( 'Değerlendirilecek candidate kalmadı.' ),
-            ) );
+                'messages'  => array( 'Değerlendirilecek yeni candidate kalmadı.' ),
+            );
         }
 
         $ready = 0;
@@ -134,20 +127,14 @@ class Sektorel_Content_Candidate_Triage {
             Sektorel_Content_Candidates::STATUS_NEW
         ) );
 
-        if ( 0 === $remaining ) {
-            delete_transient( $run_key );
-        } else {
-            set_transient( $run_key, array( 'started_at' => time() ), self::RUN_TTL );
-        }
-
-        wp_send_json_success( array(
+        return array(
             'processed' => count( $rows ),
             'ready'     => $ready,
             'review'    => $review,
             'remaining' => $remaining,
             'done'      => 0 === $remaining,
             'messages'  => $messages,
-        ) );
+        );
     }
 
     public static function evaluate( $candidate ) {
@@ -233,8 +220,6 @@ class Sektorel_Content_Candidate_Triage {
             'freshness_days'          => $freshness_days,
             'primary_category'        => $primary_category,
             'primary_category_source' => $primary_source,
-            // Keep the legacy field bounded to exactly one item while older
-            // processor code is still deployed alongside schema v2 candidates.
             'suggested_categories'    => $suggested_categories,
             'topic_tags'              => $topic_tags,
             'content_format'          => $content_format,
@@ -388,9 +373,5 @@ class Sektorel_Content_Candidate_Triage {
     private static function short_title( $title ) {
         $title = trim( (string) $title );
         return mb_strlen( $title ) > 70 ? mb_substr( $title, 0, 67 ) . '...' : $title;
-    }
-
-    private static function run_key( $user_id ) {
-        return 'sektorel_content_triage_run_' . absint( $user_id );
     }
 }
