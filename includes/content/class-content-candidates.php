@@ -212,10 +212,21 @@ class Sektorel_Content_Candidates {
 
                 if ( ! $content_changed && ! $url_changed ) {
                     unset( $data['status'], $data['duplicate_candidate_id'], $data['duplicate_method'] );
+
+                    // A routine rescan must never erase lifecycle/enrichment state
+                    // already accumulated by triage, detail extraction or AI.
+                    // Raw payload and source-facing fields may refresh, but these
+                    // stateful fields stay authoritative until material source
+                    // identity/content changes are detected.
+                    foreach ( array( 'extracted_text', 'normalized_payload', 'evidence_json' ) as $field ) {
+                        if ( isset( $existing[ $field ] ) && '' !== trim( (string) $existing[ $field ] ) ) {
+                            $data[ $field ] = $existing[ $field ];
+                        }
+                    }
                 } elseif ( self::STATUS_PROCESSED === (string) ( $existing['status'] ?? '' ) ) {
-                    $data['status']       = $status;
-                    $data['ai_status']    = 'pending';
-                    $data['processed_at'] = null;
+                    $data['status']        = $status;
+                    $data['ai_status']     = 'pending';
+                    $data['processed_at']  = null;
                     $data['draft_post_id'] = 0;
                 }
             }
