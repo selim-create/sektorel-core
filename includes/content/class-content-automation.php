@@ -70,7 +70,7 @@ class Sektorel_Content_Automation {
 
             $scan = self::scan_due_sources( self::SCAN_SOURCES_PER_TICK );
             $triage = Sektorel_Content_Candidate_Triage::process_new_batch( self::TRIAGE_ITEMS_PER_TICK );
-            $ai = Sektorel_Content_AI_Draft_Processor::process_ready_batch( self::AI_ITEMS_PER_TICK );
+            $ai = Sektorel_Content_AI_Draft_Processor::process_ready_batch( self::AI_ITEMS_PER_TICK, true );
 
             $summary = array(
                 'status'      => 'completed',
