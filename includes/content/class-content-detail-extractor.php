@@ -7,7 +7,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Safe source-text enrichment before AI editorial processing.
  *
- * Official sources use source-specific policies. TOBB detail pages are attempted
+ * Official sources use source-specific policies. KOSGEB detail pages use an
+ * audited text-boundary extractor because the production HTML collapses the
+ * article and page chrome into one wrapper. TOBB detail pages are attempted
  * first but always fall back to the official RSS summary when production cannot
  * fetch or confidently isolate the article body. TCMB keeps detail-page fetch as
  * required behavior.
@@ -50,7 +52,12 @@ class Sektorel_Content_Detail_Extractor {
             return new WP_Error( 'content_detail_url_not_allowed', 'Detay URL bu kaynak için güvenli allowlist ile eşleşmiyor.' );
         }
 
-        $document = self::fetch_document( $source_key, $url, sanitize_text_field( $row['title'] ?? '' ) );
+        $document = self::fetch_document(
+            $source_key,
+            $url,
+            sanitize_text_field( $row['title'] ?? '' ),
+            $existing
+        );
         if ( ! is_wp_error( $document ) ) {
             $text = self::clean_text( $document['text'] ?? '', self::MAX_TEXT_LENGTH, true );
             $image_url = esc_url_raw( $document['image_url'] ?? '' );
@@ -106,7 +113,7 @@ class Sektorel_Content_Detail_Extractor {
         return is_wp_error( $document ) ? '' : esc_url_raw( $document['image_url'] ?? '' );
     }
 
-    private static function fetch_document( $source_key, $url, $source_title = '' ) {
+    private static function fetch_document( $source_key, $url, $source_title = '', $source_summary = '' ) {
         $parts = wp_parse_url( $url );
         $referer = is_array( $parts ) && ! empty( $parts['scheme'] ) && ! empty( $parts['host'] )
             ? $parts['scheme'] . '://' . $parts['host'] . '/'
@@ -142,6 +149,15 @@ class Sektorel_Content_Detail_Extractor {
         }
 
         $parsed = self::extract_document_data( $html, $url, $source_title );
+
+        if ( 'kosgeb_news' === $source_key && '' !== trim( (string) $source_summary ) ) {
+            $kosgeb_text = self::extract_kosgeb_detail_text( $html, $source_title, $source_summary );
+            if ( is_wp_error( $kosgeb_text ) ) {
+                return $kosgeb_text;
+            }
+            $parsed['text'] = $kosgeb_text;
+        }
+
         if ( empty( $parsed['text'] ) ) {
             return new WP_Error( 'content_detail_extract_short', 'Detay sayfasından ana metin çıkarılamadı.' );
         }
@@ -172,6 +188,148 @@ class Sektorel_Content_Detail_Extractor {
         }
 
         return in_array( $host, $hosts, true );
+    }
+
+    /**
+     * KOSGEB's production detail HTML currently collapses the article body and
+     * site chrome into one top-level wrapper without usable child selectors.
+     * The audited listing summary remains present inside the detail body, so use
+     * it as an anchor and select the nearest matching title boundary.
+     */
+    private static function extract_kosgeb_detail_text( $html, $source_title, $source_summary ) {
+        $text = self::clean_text( $html, self::MAX_TEXT_LENGTH );
+        $title = self::clean_text( $source_title, 1000 );
+        $summary = self::clean_text( $source_summary, 5000 );
+
+        if ( mb_strlen( $title, 'UTF-8' ) < 8 || mb_strlen( $summary, 'UTF-8' ) < 40 ) {
+            return new WP_Error( 'content_detail_kosgeb_anchor_missing', 'KOSGEB detay metni için başlık veya liste özeti yetersiz.' );
+        }
+
+        $summary_needle = mb_substr( $summary, 0, min( 70, mb_strlen( $summary, 'UTF-8' ) ), 'UTF-8' );
+        $summary_pos = mb_stripos( $text, $summary_needle, 0, 'UTF-8' );
+        if ( false === $summary_pos ) {
+            return new WP_Error( 'content_detail_kosgeb_summary_missing', 'KOSGEB liste özeti detay sayfasında doğrulanamadı.' );
+        }
+
+        $title_positions = self::substring_positions( $text, $title );
+        $start = false;
+
+        // Prefer the first matching title shortly after the listing-summary anchor.
+        foreach ( $title_positions as $position ) {
+            if ( $position > $summary_pos && ( $position - $summary_pos ) <= 700 ) {
+                $start = $position;
+                break;
+            }
+        }
+
+        // Otherwise use the nearest matching title immediately before the summary.
+        if ( false === $start ) {
+            $previous = array();
+            foreach ( $title_positions as $position ) {
+                if ( $position <= $summary_pos && ( $summary_pos - $position ) <= 700 ) {
+                    $previous[] = $position;
+                }
+            }
+            if ( $previous ) {
+                $start = max( $previous );
+            }
+        }
+
+        if ( false === $start ) {
+            return new WP_Error( 'content_detail_kosgeb_title_boundary_missing', 'KOSGEB haber gövdesi başlangıç sınırı doğrulanamadı.' );
+        }
+
+        $end = self::nearest_marker_position(
+            $text,
+            array( 'Güncelleme Tarihi:', 'Guncelleme Tarihi:' ),
+            $start
+        );
+
+        if ( false === $end ) {
+            $end = self::nearest_marker_position(
+                $text,
+                array(
+                    'T.C. Küçük ve Orta Ölçekli İşletmeleri Geliştirme ve Destekleme İdaresi Başkanlığı',
+                    'T.C. KÜÇÜK VE ORTA ÖLÇEKLİ İŞLETMELERİ GELİŞTİRME VE DESTEKLEME İDARESİ BAŞKANLIĞI',
+                ),
+                $start
+            );
+        }
+
+        if ( false === $end || $end <= $start ) {
+            return new WP_Error( 'content_detail_kosgeb_end_boundary_missing', 'KOSGEB haber gövdesi bitiş sınırı doğrulanamadı.' );
+        }
+
+        $slice = self::clean_text(
+            mb_substr( $text, $start, $end - $start, 'UTF-8' ),
+            self::MAX_TEXT_LENGTH
+        );
+
+        if ( mb_strlen( $slice, 'UTF-8' ) < self::MIN_FETCHED_TEXT ) {
+            return new WP_Error( 'content_detail_kosgeb_too_short', 'KOSGEB haber gövdesi güvenilir minimum uzunluğun altında.' );
+        }
+
+        $summary_probe = mb_substr(
+            $summary_needle,
+            0,
+            min( 40, mb_strlen( $summary_needle, 'UTF-8' ) ),
+            'UTF-8'
+        );
+        if ( '' === $summary_probe || false === mb_stripos( $slice, $summary_probe, 0, 'UTF-8' ) ) {
+            return new WP_Error( 'content_detail_kosgeb_summary_outside_body', 'KOSGEB liste özeti seçilen haber gövdesi içinde doğrulanamadı.' );
+        }
+
+        foreach (
+            array(
+                'Erişilebilirlik Menüsü',
+                'Ekran Okuyucu',
+                'Seçili Alan Okuyucu',
+                'Erişilebilirlik Ayarlarını Temizle',
+                'Site içi arama',
+                'e-hizmetler MENU',
+                'Kurumsal Başkan Başkan Yardımcıları',
+            ) as $chrome_marker
+        ) {
+            if ( false !== mb_stripos( $slice, $chrome_marker, 0, 'UTF-8' ) ) {
+                return new WP_Error( 'content_detail_kosgeb_page_chrome', 'KOSGEB detay metni sayfa arayüzü gürültüsü içeriyor.' );
+            }
+        }
+
+        if ( ! self::is_plausible_detail_text( $slice, $title ) ) {
+            return new WP_Error( 'content_detail_kosgeb_implausible', 'KOSGEB detay metni kaynak başlıkla yeterli örtüşme göstermiyor.' );
+        }
+
+        return $slice;
+    }
+
+    private static function substring_positions( $haystack, $needle ) {
+        $positions = array();
+        $needle = (string) $needle;
+        if ( '' === $needle ) {
+            return $positions;
+        }
+
+        $offset = 0;
+        $needle_length = mb_strlen( $needle, 'UTF-8' );
+        while ( false !== ( $position = mb_stripos( $haystack, $needle, $offset, 'UTF-8' ) ) ) {
+            $positions[] = $position;
+            $offset = $position + max( 1, $needle_length );
+        }
+
+        return $positions;
+    }
+
+    private static function nearest_marker_position( $text, $markers, $start ) {
+        $positions = array();
+
+        foreach ( (array) $markers as $marker ) {
+            $position = mb_stripos( $text, (string) $marker, $start + 1, 'UTF-8' );
+            if ( false !== $position ) {
+                $positions[] = $position;
+            }
+        }
+
+        return $positions ? min( $positions ) : false;
     }
 
     private static function extract_document_data( $html, $page_url, $source_title = '' ) {
